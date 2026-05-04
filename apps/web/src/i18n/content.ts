@@ -5,6 +5,17 @@ import type {
 } from '../types';
 import type { Locale } from './types';
 import {
+  FR_DESIGN_SYSTEM_CATEGORIES,
+  FR_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK,
+  FR_DESIGN_SYSTEM_SUMMARIES,
+  FR_PROMPT_TEMPLATE_CATEGORIES,
+  FR_PROMPT_TEMPLATE_COPY,
+  FR_PROMPT_TEMPLATE_IDS_WITH_EN_FALLBACK,
+  FR_PROMPT_TEMPLATE_TAGS,
+  FR_SKILL_COPY,
+  FR_SKILL_IDS_WITH_EN_FALLBACK,
+} from './content.fr';
+import {
   RU_DESIGN_SYSTEM_CATEGORIES,
   RU_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK,
   RU_DESIGN_SYSTEM_SUMMARIES,
@@ -69,6 +80,16 @@ const DE_SKILL_COPY: Record<string, LocalizedSkillCopy> = {
   'docs-page': {
     examplePrompt:
       'Eine Dokumentationsseite — linke Navigation, scrollbarer Artikelbereich, rechte Inhaltsübersicht.',
+  },
+  'editorial-collage': {
+    examplePrompt:
+      'Entwerfen Sie eine Editorial-Landingpage im Atelier-Zero- / Monocle-Stil — warme Papierleinwand, surreale Plaster-und-Architektur-Collage, übergroße gemischte Italic-Serif-Display-Type, römische Ziffern als Sektionsmarker und ein einziger Korallenakzent.',
+  },
+  'editorial-collage-deck': {
+    examplePrompt:
+      'Erstellen Sie ein 11-Slide-Pitch-Deck für „Lumen Field“, ein Studio für Fokus-Soundscapes. Cover mit Hero-Plate, zwei Sektions-Trenner, zwei Produkt-Content-Slides mit Bullets, ein Stats-Slide mit 12 Soundscapes / 4 Presets / 1 Daily Ritual, ein Kundenzitat, ein abschließendes CTA und eine End-Card. Wiederverwenden Sie die Bildbibliothek von editorial-collage.',
+    description:
+      'Erstellt ein Single-File-Slide-Deck in der Atelier-Zero-Bildsprache (warmes Papier, italic-serif Akzent-Spans, korallenfarbene Schluss-Dots, surreale Collage-Platten). Das Deck nutzt Scroll-Snap-Pagination, Pfeiltasten- + Leertaste-Navigation, ein Live-HUD mit Slide-Zähler und Fortschrittsbalken und erbt das kanonische Stylesheet sowie die 16-Slot-Bildbibliothek der Schwester-Skill `editorial-collage`.',
   },
   'email-marketing': {
     examplePrompt:
@@ -220,6 +241,8 @@ const DE_DESIGN_SYSTEM_SUMMARIES: Record<string, string> = {
   airbnb: 'Reisemarktplatz. Warmer Korallenakzent, fotogetrieben, abgerundete UI.',
   airtable: 'Spreadsheet-Datenbank-Hybrid. Farbenfroh, freundlich, strukturierte Datenästhetik.',
   apple: 'Unterhaltungselektronik. Premium-Weißraum, SF Pro, filmische Bildsprache.',
+  'atelier-zero':
+    'Editoriales Studio-System. Warme Papierleinwand, surreale Plaster-und-Architektur-Collage, gemischte Italic-Serif-Display-Type, römische Ziffern als Sektionsmarker und ein einziger Korallenakzent — gemacht für Magazin-Landingpages, Studio-Sites und Manifestseiten.',
   binance: 'Krypto-Börse. Kräftiger gelber Akzent auf Monochrom, Trading-Floor-Dringlichkeit.',
   bmw: 'Luxusautomobil. Dunkle Premium-Flächen, präzise deutsche Engineering-Ästhetik.',
   bugatti: 'Hypercar-Marke. Kinodunkle Leinwand, monochrome Strenge, monumentale Display-Type.',
@@ -316,6 +339,7 @@ const DE_DESIGN_SYSTEM_CATEGORIES: Record<string, string> = {
   'Media & Consumer': 'Medien & Consumer',
   Automotive: 'Automotive',
   'Editorial & Print': 'Editorial & Print',
+  'Editorial · Studio': 'Editorial · Studio',
   'Retro & Nostalgic': 'Retro & Nostalgisch',
   'Themed & Unique': 'Thematisch & Einzigartig',
   Uncategorized: 'Nicht kategorisiert',
@@ -985,6 +1009,17 @@ const LOCALIZED_CONTENT: Partial<Record<Locale, LocalizedContentBundle>> = {
     promptTemplateTags: RU_PROMPT_TEMPLATE_TAGS,
     promptTemplateCopy: RU_PROMPT_TEMPLATE_COPY,
   },
+  fr: {
+    skillCopy: FR_SKILL_COPY,
+    skillIdsWithEnFallback: FR_SKILL_IDS_WITH_EN_FALLBACK,
+    designSystemSummaries: FR_DESIGN_SYSTEM_SUMMARIES,
+    designSystemCategories: FR_DESIGN_SYSTEM_CATEGORIES,
+    designSystemIdsWithEnFallback: FR_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK,
+    promptTemplateCategories: FR_PROMPT_TEMPLATE_CATEGORIES,
+    promptTemplateIdsWithEnFallback: FR_PROMPT_TEMPLATE_IDS_WITH_EN_FALLBACK,
+    promptTemplateTags: FR_PROMPT_TEMPLATE_TAGS,
+    promptTemplateCopy: FR_PROMPT_TEMPLATE_COPY,
+  },
 };
 
 function buildLocalizedContentIds(content: LocalizedContentBundle): LocalizedContentIds {
@@ -1010,10 +1045,12 @@ function buildLocalizedContentIds(content: LocalizedContentBundle): LocalizedCon
 export const LOCALIZED_CONTENT_IDS = {
   de: buildLocalizedContentIds(LOCALIZED_CONTENT.de!),
   ru: buildLocalizedContentIds(LOCALIZED_CONTENT.ru!),
-} satisfies Record<'de' | 'ru', LocalizedContentIds>;
+  fr: buildLocalizedContentIds(LOCALIZED_CONTENT.fr!),
+} satisfies Record<'de' | 'ru' | 'fr', LocalizedContentIds>;
 
 export const GERMAN_CONTENT_IDS = LOCALIZED_CONTENT_IDS.de;
 export const RUSSIAN_CONTENT_IDS = LOCALIZED_CONTENT_IDS.ru;
+export const FRENCH_CONTENT_IDS = LOCALIZED_CONTENT_IDS.fr;
 
 function getLocalizedContent(locale: Locale): LocalizedContentBundle | undefined {
   return LOCALIZED_CONTENT[locale];
