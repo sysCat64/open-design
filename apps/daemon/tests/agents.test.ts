@@ -36,6 +36,7 @@ const devin = AGENT_DEFS.find((agent) => agent.id === 'devin');
 const pi = AGENT_DEFS.find((agent) => agent.id === 'pi');
 const deepseek = AGENT_DEFS.find((agent) => agent.id === 'deepseek');
 const gemini = AGENT_DEFS.find((agent) => agent.id === 'gemini');
+const qoder = AGENT_DEFS.find((agent) => agent.id === 'qoder');
 const originalDisablePlugins = process.env.OD_CODEX_DISABLE_PLUGINS;
 const originalPath = process.env.PATH;
 const originalHome = process.env.HOME;
@@ -458,6 +459,148 @@ test('gemini args preserve custom model selection', () => {
     '--model',
     'gemini-2.5-pro',
   ]);
+});
+
+test('qoder entry uses qodercli with stream-json stdin delivery and tier model hints', () => {
+  assert.equal(qoder.name, 'Qoder CLI');
+  assert.equal(qoder.bin, 'qodercli');
+  assert.deepEqual(qoder.versionArgs, ['--version']);
+  assert.equal(qoder.promptViaStdin, true);
+  assert.equal(qoder.streamFormat, 'qoder-stream-json');
+  assert.deepEqual(qoder.fallbackModels.map((m) => m.id), [
+    'default',
+    'lite',
+    'efficient',
+    'auto',
+    'performance',
+    'ultimate',
+  ]);
+});
+
+test('qoder args use non-interactive print mode with cwd, model, and add-dir', () => {
+  const args = qoder.buildArgs(
+    'prompt must not appear in argv',
+    ['/tmp/uploads/logo.png', '/tmp/uploads/hero concept.png'],
+    [
+      '/repo/skills',
+      '',
+      null,
+      './relative-skills',
+      'relative-design-systems',
+      '/repo/design-systems',
+    ],
+    { model: 'performance' },
+    { cwd: '/tmp/od-project' },
+  );
+
+  assert.deepEqual(args, [
+    '-p',
+    '--output-format',
+    'stream-json',
+    '--yolo',
+    '-w',
+    '/tmp/od-project',
+    '--model',
+    'performance',
+    '--add-dir',
+    '/repo/skills',
+    '--add-dir',
+    '/repo/design-systems',
+    '--attachment',
+    '/tmp/uploads/logo.png',
+    '--attachment',
+    '/tmp/uploads/hero concept.png',
+  ]);
+  assert.equal(args.includes('prompt must not appear in argv'), false);
+  assert.equal(args.includes('./relative-skills'), false);
+  assert.equal(args.includes('relative-design-systems'), false);
+});
+
+test('qoder args omit default model and cwd when absent', () => {
+  const args = qoder.buildArgs('', [], [], { model: 'default' }, {});
+
+  assert.deepEqual(args, [
+    '-p',
+    '--output-format',
+    'stream-json',
+    '--yolo',
+  ]);
+  assert.equal(args.includes('--model'), false);
+  assert.equal(args.includes('-w'), false);
+});
+
+test('qoder args omit empty, non-string, and relative add-dir entries', () => {
+  const args = qoder.buildArgs('', [], [
+    '',
+    null,
+    undefined,
+    42,
+    './skills',
+    'design-systems',
+  ]);
+
+  assert.equal(args.includes('--add-dir'), false);
+});
+
+test('qoder args omit empty, non-string, and relative image attachment entries', () => {
+  const args = qoder.buildArgs('', [
+    '',
+    null,
+    undefined,
+    42,
+    './uploads/logo.png',
+    'uploads/hero.png',
+    '/tmp/uploads/logo.png',
+  ]);
+
+  assert.deepEqual(
+    args.filter((arg) => arg === '--attachment').length,
+    1,
+  );
+  assert.ok(args.includes('/tmp/uploads/logo.png'));
+  assert.equal(args.includes('./uploads/logo.png'), false);
+  assert.equal(args.includes('uploads/hero.png'), false);
+});
+
+test('qoder adapter inherits QODER_PERSONAL_ACCESS_TOKEN from daemon env', () => {
+  const env = spawnEnvForAgent('qoder', {
+    QODER_PERSONAL_ACCESS_TOKEN: 'qoder-pat',
+    PATH: '/usr/bin',
+    OD_DAEMON_URL: 'http://127.0.0.1:7456',
+  });
+
+  assert.equal(env.QODER_PERSONAL_ACCESS_TOKEN, 'qoder-pat');
+  assert.equal(env.PATH, '/usr/bin');
+  assert.equal(env.OD_DAEMON_URL, 'http://127.0.0.1:7456');
+});
+
+test('qoder adapter does not define static secret env', () => {
+  assert.equal(qoder.env?.QODER_PERSONAL_ACCESS_TOKEN, undefined);
+});
+
+test('detectAgents keeps qoder unavailable with fallback metadata when qodercli is missing', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'od-agents-empty-'));
+  try {
+    process.env.OD_AGENT_HOME = dir;
+    process.env.PATH = dir;
+
+    const agents = await detectAgents();
+    const detected = agents.find((agent) => agent.id === 'qoder');
+
+    assert.ok(detected);
+    assert.equal(detected.available, false);
+    assert.equal(detected.bin, 'qodercli');
+    assert.deepEqual(detected.models.map((m) => m.id), [
+      'default',
+      'lite',
+      'efficient',
+      'auto',
+      'performance',
+      'ultimate',
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('kiro fetchModels falls back to fallbackModels when detection fails', async () => {
