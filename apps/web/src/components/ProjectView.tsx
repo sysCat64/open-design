@@ -376,6 +376,13 @@ export function ProjectView({
     return () => {
       sendTextBufferRef.current?.cancel();
       sendTextBufferRef.current = null;
+      // Unmounts / conversation switches should only detach local stream
+      // consumers. Aborting the daemon cancel controllers here turns routine
+      // cleanup into an explicit POST /api/runs/:id/cancel, which can mark a
+      // live run canceled even when the user never clicked Stop.
+      abortRef.current?.abort();
+      abortRef.current = null;
+      cancelRef.current = null;
       for (const textBuffer of reattachTextBuffersRef.current) textBuffer.cancel();
       reattachTextBuffersRef.current.clear();
       for (const controller of reattachControllersRef.current.values()) {
