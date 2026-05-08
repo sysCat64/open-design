@@ -91,6 +91,19 @@ async function waitForFile(file: string, timeoutMs = 5_000): Promise<void> {
   throw new Error(`Timed out waiting for ${file}`);
 }
 
+async function waitForPidToExit(pid: number, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for process ${pid} to exit`);
+}
+
 beforeAll(async () => {
   const started = (await startServer({ port: 0, returnServer: true })) as StartedServer;
   baseUrl = started.url;
@@ -826,6 +839,38 @@ console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_messag
     );
   });
 
+  it('uses CODEX_BIN overrides when testing agent connections', async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'od-conn-test-codex-bin-'));
+    const oldPath = process.env.PATH;
+    try {
+      const bin = path.join(dir, 'codex-next');
+      await fsp.writeFile(
+        bin,
+        `#!/usr/bin/env node\nconsole.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'ok' } }));\n`,
+      );
+      await fsp.chmod(bin, 0o755);
+      process.env.PATH = oldPath ?? '';
+
+      const result = await testAgentConnection({
+        agentId: 'codex',
+        agentCliEnv: {
+          codex: {
+            CODEX_BIN: bin,
+          },
+        },
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        kind: 'success',
+        agentName: 'Codex CLI',
+      });
+    } finally {
+      process.env.PATH = oldPath;
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('reports OpenCode structured errors without treating them as raw output', async () => {
     await withFakeOpenCode(
       `
@@ -974,9 +1019,16 @@ setInterval(() => {}, 1000);
           });
         },
       );
-      await expect(fsp.readFile(termFile, 'utf8')).resolves.toBe('term');
+      if (process.platform !== 'win32') {
+        await expect(fsp.readFile(termFile, 'utf8')).resolves.toBe('term');
+      }
       const pid = Number(await fsp.readFile(pidFile, 'utf8'));
-      expect(() => process.kill(pid, 0)).toThrow();
+      if (process.platform === 'win32') {
+        process.kill(pid, 'SIGKILL');
+        await waitForPidToExit(pid);
+      } else {
+        expect(() => process.kill(pid, 0)).toThrow();
+      }
     } finally {
       await fsp.rm(markerDir, { recursive: true, force: true });
     }

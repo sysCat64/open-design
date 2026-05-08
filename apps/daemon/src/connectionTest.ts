@@ -864,6 +864,8 @@ function attachAgentStreamHandlers(
       cwd,
       model: model ?? null,
       send,
+      imagePaths: [],
+      uploadRoot: undefined,
     });
   } else if (def.streamFormat === 'acp-json-rpc') {
     acpSession = attachAcpSession({
@@ -931,7 +933,11 @@ export async function testAgentConnection(
       detail: `Unknown agent id: ${input.agentId}`,
     };
   }
-  const resolvedBin = resolveAgentBin(input.agentId);
+  const configuredAgentEnv = agentCliEnvForAgent(
+    validateAgentCliEnv(input.agentCliEnv),
+    input.agentId,
+  );
+  const resolvedBin = resolveAgentBin(input.agentId, configuredAgentEnv);
   if (!resolvedBin) {
     return {
       ok: false,
@@ -1052,10 +1058,6 @@ export async function testAgentConnection(
     }
     const stdinMode =
       def.promptViaStdin || def.streamFormat === 'acp-json-rpc' ? 'pipe' : 'ignore';
-    const configuredAgentEnv = agentCliEnvForAgent(
-      validateAgentCliEnv(input.agentCliEnv),
-      input.agentId,
-    );
     const env = spawnEnvForAgent(
       input.agentId,
       {

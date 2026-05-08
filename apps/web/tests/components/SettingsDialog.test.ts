@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   agentRefreshOptionsForConfig,
   canRunProviderConnectionTest,
+  deriveComposioCredentialState,
   isValidApiBaseUrl,
   shouldShowCustomModelInput,
   switchApiProtocolConfig,
@@ -253,6 +254,27 @@ describe('SettingsDialog agent CLI env settings', () => {
     });
   });
 
+  it('updates additional Codex CLI env values without dropping sibling Codex fields', () => {
+    const config: AppConfig = {
+      ...baseConfig,
+      mode: 'daemon',
+      agentCliEnv: {
+        codex: { CODEX_HOME: '~/.codex-alt' },
+      },
+    };
+
+    const next = updateAgentCliEnvValue(
+      config,
+      'codex',
+      'CODEX_BIN',
+      '  ~/bin/codex-next  ',
+    );
+
+    expect(next.agentCliEnv).toEqual({
+      codex: { CODEX_HOME: '~/.codex-alt', CODEX_BIN: '~/bin/codex-next' },
+    });
+  });
+
   it('removes empty per-agent CLI env entries', () => {
     const config: AppConfig = {
       ...baseConfig,
@@ -303,5 +325,53 @@ describe('SettingsDialog agent CLI env settings', () => {
       throwOnError: true,
       agentCliEnv: {},
     });
+  });
+});
+
+describe('deriveComposioCredentialState', () => {
+  // Issue #741: when a Composio API key is already saved and the user
+  // starts typing a draft replacement, the saved-key indicator must
+  // stay visible. The previous code conflated `saved + draft` with
+  // `draft only` and made the badge vanish on the first keystroke.
+
+  it('returns "empty" when nothing is configured and the field is empty', () => {
+    expect(deriveComposioCredentialState({})).toBe('empty');
+    expect(deriveComposioCredentialState(null)).toBe('empty');
+    expect(deriveComposioCredentialState(undefined)).toBe('empty');
+    expect(deriveComposioCredentialState({ apiKey: '' })).toBe('empty');
+    expect(deriveComposioCredentialState({ apiKey: '   ' })).toBe('empty');
+  });
+
+  it('returns "saved" when a key is configured and no draft is being typed', () => {
+    expect(
+      deriveComposioCredentialState({ apiKeyConfigured: true }),
+    ).toBe('saved');
+    expect(
+      deriveComposioCredentialState({ apiKey: '', apiKeyConfigured: true }),
+    ).toBe('saved');
+    expect(
+      deriveComposioCredentialState({ apiKey: '   ', apiKeyConfigured: true }),
+    ).toBe('saved');
+  });
+
+  it('returns "pending-new" when only a draft is being typed (no saved key)', () => {
+    expect(deriveComposioCredentialState({ apiKey: 'sk-draft' })).toBe('pending-new');
+    expect(
+      deriveComposioCredentialState({ apiKey: 'sk-draft', apiKeyConfigured: false }),
+    ).toBe('pending-new');
+  });
+
+  it('returns "saved-pending" when a key is saved AND a draft is being typed', () => {
+    // Regression: this is the state that previously masqueraded as
+    // "pending-new" and made the saved-key badge disappear.
+    expect(
+      deriveComposioCredentialState({ apiKey: 'sk-replacement', apiKeyConfigured: true }),
+    ).toBe('saved-pending');
+  });
+
+  it('treats whitespace-only drafts as no draft so the badge is anchored on "saved"', () => {
+    expect(
+      deriveComposioCredentialState({ apiKey: '   \t\n', apiKeyConfigured: true }),
+    ).toBe('saved');
   });
 });
