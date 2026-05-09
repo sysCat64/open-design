@@ -365,6 +365,7 @@ export const RU_SKILL_IDS_WITH_EN_FALLBACK = [
   'orbit-gmail',
   'orbit-linear',
   'orbit-notion',
+  'release-notes-one-pager',
   // TODO: add localized copy for social-media-dashboard (introduced in #678).
   // Fallback for now so the localized-content coverage test passes.
   'social-media-dashboard',
