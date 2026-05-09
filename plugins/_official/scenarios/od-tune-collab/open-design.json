@@ -1,0 +1,27 @@
+{
+  "$schema": "https://open-design.ai/schemas/plugin.v1.json",
+  "name": "od-tune-collab",
+  "title": "Open Design — tune & collaborate (default scenario)",
+  "version": "0.1.0",
+  "description": "Default reference pipeline for the tune-collab taskKind.",
+  "license": "MIT",
+  "tags": ["scenario", "first-party", "tune-collab"],
+  "compat": { "agentSkills": [{ "path": "./SKILL.md" }] },
+  "od": {
+    "kind": "scenario",
+    "taskKind": "tune-collab",
+    "scenario": "tune-collab",
+    "mode": "scenario",
+    "pipeline": {
+      "stages": [
+        { "id": "direction", "atoms": ["direction-picker"] },
+        { "id": "patch",     "atoms": ["patch-edit"] },
+        { "id": "critique",  "atoms": ["critique-theater"],
+          "repeat": true,
+          "until": "critique.score>=4 || iterations>=3" },
+        { "id": "handoff",   "atoms": ["handoff"] }
+      ]
+    },
+    "capabilities": ["prompt:inject", "fs:read", "fs:write"]
+  }
+}

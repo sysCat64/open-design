@@ -1,0 +1,28 @@
+{
+  "$schema": "https://open-design.ai/schemas/plugin.v1.json",
+  "name": "od-figma-migration",
+  "title": "Open Design — figma migration (default scenario)",
+  "version": "0.1.0",
+  "description": "Default reference pipeline for the figma-migration taskKind.",
+  "license": "MIT",
+  "tags": ["scenario", "first-party", "figma-migration", "phase-6"],
+  "compat": { "agentSkills": [{ "path": "./SKILL.md" }] },
+  "od": {
+    "kind": "scenario",
+    "taskKind": "figma-migration",
+    "scenario": "figma-migration",
+    "mode": "scenario",
+    "pipeline": {
+      "stages": [
+        { "id": "extract",  "atoms": ["figma-extract"] },
+        { "id": "tokens",   "atoms": ["token-map"] },
+        { "id": "generate", "atoms": ["file-write", "live-artifact"] },
+        { "id": "critique", "atoms": ["critique-theater"],
+          "repeat": true,
+          "until": "critique.score>=4 || iterations>=3" }
+      ]
+    },
+    "connectors": { "required": [{ "id": "figma", "tools": ["files.get"] }] },
+    "capabilities": ["prompt:inject", "connector:figma", "network"]
+  }
+}

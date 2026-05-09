@@ -1,0 +1,30 @@
+{
+  "$schema": "https://open-design.ai/schemas/plugin.v1.json",
+  "name": "od-code-migration",
+  "title": "Open Design — code migration (default scenario)",
+  "version": "0.1.0",
+  "description": "Default reference pipeline for the code-migration taskKind, with patch-edit ↔ build-test devloop and diff-review handoff.",
+  "license": "MIT",
+  "tags": ["scenario", "first-party", "code-migration", "phase-7"],
+  "compat": { "agentSkills": [{ "path": "./SKILL.md" }] },
+  "od": {
+    "kind": "scenario",
+    "taskKind": "code-migration",
+    "scenario": "code-migration",
+    "mode": "scenario",
+    "pipeline": {
+      "stages": [
+        { "id": "import",    "atoms": ["code-import"] },
+        { "id": "tokens",    "atoms": ["design-extract", "token-map"] },
+        { "id": "plan",      "atoms": ["rewrite-plan"] },
+        { "id": "verify",
+          "atoms": ["patch-edit", "build-test"],
+          "repeat": true,
+          "until": "(build.passing && tests.passing) || iterations>=8" },
+        { "id": "review",    "atoms": ["diff-review"] },
+        { "id": "handoff",   "atoms": ["handoff"] }
+      ]
+    },
+    "capabilities": ["prompt:inject", "fs:read", "fs:write", "subprocess"]
+  }
+}

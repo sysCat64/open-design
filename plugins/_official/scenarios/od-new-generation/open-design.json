@@ -1,0 +1,27 @@
+{
+  "$schema": "https://open-design.ai/schemas/plugin.v1.json",
+  "name": "od-new-generation",
+  "title": "Open Design — new generation (default scenario)",
+  "version": "0.1.0",
+  "description": "Default reference pipeline for the new-generation taskKind.",
+  "license": "MIT",
+  "tags": ["scenario", "first-party", "new-generation"],
+  "compat": { "agentSkills": [{ "path": "./SKILL.md" }] },
+  "od": {
+    "kind": "scenario",
+    "taskKind": "new-generation",
+    "scenario": "new-generation",
+    "mode": "scenario",
+    "pipeline": {
+      "stages": [
+        { "id": "discovery", "atoms": ["discovery-question-form"] },
+        { "id": "plan",      "atoms": ["direction-picker", "todo-write"] },
+        { "id": "generate",  "atoms": ["file-write", "live-artifact"] },
+        { "id": "critique",  "atoms": ["critique-theater"],
+          "repeat": true,
+          "until": "critique.score>=4 || iterations>=3" }
+      ]
+    },
+    "capabilities": ["prompt:inject"]
+  }
+}
