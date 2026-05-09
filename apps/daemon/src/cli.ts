@@ -113,6 +113,10 @@ const SUBCOMMAND_MAP = {
   plugin: runPlugin,
   ui: runUi,
   marketplace: runMarketplace,
+  project: runProject,
+  run: runRun,
+  files: runFiles,
+  conversation: runConversation,
 };
 
 if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
@@ -1629,4 +1633,482 @@ Common options:
 
 Phase 1 only supports local-folder installs. The github / https tarball
 sources arrive in Phase 2A. The marketplace surface comes in Phase 4.`);
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: od project / od run / od files / od conversation
+//
+// Plan §6 Phase 1 follow-up + Phase 2C: thin CLI wrappers over the
+// existing daemon HTTP endpoints (POST /api/projects, POST /api/runs,
+// GET /api/projects/:id/files, …). The §12.5 walkthrough relies on
+// these so a code agent can drive Open Design end-to-end without
+// hitting `/api/*` directly. Spec §11.7 invariant: every UI feature is
+// reachable via the CLI; we wrap rather than duplicate.
+// ---------------------------------------------------------------------------
+
+function projectDaemonUrl(flags) {
+  return (flags && flags['daemon-url']) || process.env.OD_DAEMON_URL || 'http://127.0.0.1:7456';
+}
+
+const PROJECT_STRING_FLAGS = new Set([
+  'daemon-url', 'name', 'skill', 'design-system', 'plugin', 'metadata-json',
+  'pending-prompt', 'project', 'conversation', 'message', 'path', 'as',
+  'agent', 'model', 'snapshot-id', 'inputs', 'grant-caps',
+]);
+const PROJECT_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'follow']);
+
+function safeReadJsonFile(p) {
+  try {
+    const fs = (require ? require('node:fs') : null);
+    if (!fs) return null;
+    if (p === '-') return JSON.parse(fs.readFileSync(0, 'utf8'));
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function runProject(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage:
+  od project create [--name "<title>"] [--skill <id>] [--design-system <id>]
+                    [--plugin <id>] [--inputs <json>] [--metadata-json <path|->]
+  od project list                         List projects.
+  od project info <id>                    Print one project.
+  od project delete <id>                  Delete a project.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base.
+  --json               Emit raw JSON.`);
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flags = parseFlags(rest, { string: PROJECT_STRING_FLAGS, boolean: PROJECT_BOOLEAN_FLAGS });
+  const base = projectDaemonUrl(flags).replace(/\/$/, '');
+  switch (sub) {
+    case 'list': {
+      const resp = await fetch(`${base}/api/projects`);
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      const projects = data?.projects ?? [];
+      if (projects.length === 0) {
+        console.log('No projects. Create one with `od project create --name "..."`.');
+        return;
+      }
+      for (const p of projects) console.log(`${p.id}\t${p.name}\t${p.skillId ?? '-'}`);
+      return;
+    }
+    case 'info': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od project info <id>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}`);
+      if (!resp.ok) return structuredHttpFailure(resp, 'project-not-found');
+      const data = await resp.json();
+      process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      return;
+    }
+    case 'create': {
+      const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
+      const name = typeof flags.name === 'string' && flags.name.length > 0
+        ? flags.name
+        : 'Untitled project';
+      const body = {
+        id,
+        name,
+        skillId:        flags.skill ?? null,
+        designSystemId: flags['design-system'] ?? null,
+      };
+      if (flags['pending-prompt']) body.pendingPrompt = flags['pending-prompt'];
+      if (flags['metadata-json']) {
+        const mj = safeReadJsonFile(flags['metadata-json']);
+        if (mj && typeof mj === 'object') body.metadata = mj;
+      }
+      if (flags.plugin) body.pluginId = flags.plugin;
+      if (flags.inputs) {
+        try { body.pluginInputs = JSON.parse(flags.inputs); } catch (err) {
+          console.error(`--inputs must be valid JSON: ${err.message}`);
+          process.exit(2);
+        }
+      }
+      if (flags['grant-caps']) {
+        body.grantCaps = String(flags['grant-caps']).split(',').map((c) => c.trim()).filter(Boolean);
+      }
+      const resp = await fetch(`${base}/api/projects`, {
+        method:  'POST',
+        headers: { 'content-type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        if (resp.status === 409 && data?.error?.code === 'capabilities-required') {
+          return exitWithStructuredError({
+            code:    'capabilities-required',
+            message: data.error.message,
+            data:    data.error.data,
+          });
+        }
+        console.error(`POST /api/projects failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      console.log(`[project] created ${data.project?.id ?? id} (conversation ${data.conversationId})`);
+      return;
+    }
+    case 'delete': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od project delete <id>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!resp.ok) return structuredHttpFailure(resp, 'project-not-found');
+      console.log(`[project] deleted ${id}`);
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od project ${sub}`);
+      process.exit(2);
+  }
+}
+
+async function runRun(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage:
+  od run start --project <projectId> [--conversation <id>] [--message "<text>"]
+               [--plugin <id>] [--inputs <json>] [--grant-caps a,b]
+               [--agent claude|codex|gemini] [--model <id>] [--follow] [--json]
+  od run watch  <runId>                     ND-JSON event stream on stdout.
+  od run cancel <runId>                     Request cancellation.
+  od run list   [--project <id>]            List recent runs.
+  od run info   <runId>                     One run's status.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base.
+  --json               Emit raw JSON.`);
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flags = parseFlags(rest, { string: PROJECT_STRING_FLAGS, boolean: PROJECT_BOOLEAN_FLAGS });
+  const base = projectDaemonUrl(flags).replace(/\/$/, '');
+  switch (sub) {
+    case 'list': {
+      const url = flags.project
+        ? `${base}/api/runs?projectId=${encodeURIComponent(flags.project)}`
+        : `${base}/api/runs`;
+      const resp = await fetch(url);
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      const runs = data?.runs ?? [];
+      for (const r of runs) {
+        console.log(`${r.id}\t${r.status}\tproject=${r.projectId ?? '-'}\tplugin=${r.pluginId ?? '-'}`);
+      }
+      return;
+    }
+    case 'info': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od run info <runId>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/runs/${encodeURIComponent(id)}`);
+      if (!resp.ok) return structuredHttpFailure(resp, 'run-not-found');
+      const data = await resp.json();
+      process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      return;
+    }
+    case 'cancel': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od run cancel <runId>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/runs/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+      if (!resp.ok) return structuredHttpFailure(resp, 'run-not-found');
+      console.log(`[run] cancelled ${id}`);
+      return;
+    }
+    case 'watch': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od run watch <runId>');
+        process.exit(2);
+      }
+      await streamRunEvents(base, id);
+      return;
+    }
+    case 'start': {
+      if (!flags.project) {
+        console.error('--project <projectId> is required');
+        process.exit(2);
+      }
+      const body = { projectId: flags.project };
+      if (flags.conversation) body.conversationId = flags.conversation;
+      if (flags.message) body.message = flags.message;
+      if (flags.plugin) body.pluginId = flags.plugin;
+      if (flags.agent) body.agentId = flags.agent;
+      if (flags.model) body.model = flags.model;
+      if (flags.inputs) {
+        try { body.pluginInputs = JSON.parse(flags.inputs); } catch (err) {
+          console.error(`--inputs must be valid JSON: ${err.message}`);
+          process.exit(2);
+        }
+      }
+      if (flags['grant-caps']) {
+        body.grantCaps = String(flags['grant-caps']).split(',').map((c) => c.trim()).filter(Boolean);
+      }
+      if (flags['snapshot-id']) body.appliedPluginSnapshotId = flags['snapshot-id'];
+      const resp = await fetch(`${base}/api/runs`, {
+        method:  'POST',
+        headers: { 'content-type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        if (resp.status === 409 && data?.error?.code === 'capabilities-required') {
+          return exitWithStructuredError({
+            code:    'capabilities-required',
+            message: data.error.message,
+            data:    data.error.data,
+          });
+        }
+        if (resp.status === 422 && data?.error?.code === 'missing-input') {
+          return exitWithStructuredError({
+            code:    'missing-input',
+            message: data.error.message,
+            data:    data.error.data,
+          });
+        }
+        console.error(`POST /api/runs failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      if (flags.json && !flags.follow) {
+        return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      }
+      console.log(`[run] started ${data.runId}`);
+      if (flags.follow) await streamRunEvents(base, data.runId);
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od run ${sub}`);
+      process.exit(2);
+  }
+}
+
+// Stream the SSE events at /api/runs/:id/events as ND-JSON on stdout.
+// Each line is one event: { event, data } so a code agent can parse it
+// without needing an SSE library.
+async function streamRunEvents(base, runId) {
+  const resp = await fetch(`${base}/api/runs/${encodeURIComponent(runId)}/events`, {
+    headers: { accept: 'text/event-stream' },
+  });
+  if (!resp.ok || !resp.body) {
+    console.error(`run watch failed: ${resp.status}`);
+    process.exit(1);
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split('\n\n');
+    buffer = blocks.pop() ?? '';
+    for (const block of blocks) {
+      const lines = block.split('\n');
+      const eventLine = lines.find((l) => l.startsWith('event: '));
+      const dataLine  = lines.find((l) => l.startsWith('data: '));
+      const event = eventLine ? eventLine.slice('event: '.length) : 'message';
+      const dataRaw = dataLine ? dataLine.slice('data: '.length) : '';
+      let parsed;
+      try { parsed = JSON.parse(dataRaw); } catch { parsed = dataRaw; }
+      process.stdout.write(JSON.stringify({ event, data: parsed }) + '\n');
+      if (event === 'end') {
+        return;
+      }
+    }
+  }
+}
+
+async function runFiles(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage:
+  od files list   <projectId>                  List files in a project.
+  od files read   <projectId> <relpath>        Stream file bytes to stdout.
+  od files write  <projectId> <relpath> [< stdin]
+                                               Write content from stdin.
+  od files upload <projectId> <localpath> [--as <relpath>]
+                                               Upload a local file.
+  od files delete <projectId> <name>           Delete a project file.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base.
+  --json               Emit raw JSON.`);
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flags = parseFlags(rest, { string: PROJECT_STRING_FLAGS, boolean: PROJECT_BOOLEAN_FLAGS });
+  const base = projectDaemonUrl(flags).replace(/\/$/, '');
+  switch (sub) {
+    case 'list': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od files list <projectId>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/files`);
+      if (!resp.ok) return structuredHttpFailure(resp, 'project-not-found');
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      const files = Array.isArray(data?.files) ? data.files : [];
+      for (const f of files) console.log(`${f.size}\t${f.name ?? f.path}`);
+      return;
+    }
+    case 'read': {
+      const positional = rest.filter((a) => !a.startsWith('-'));
+      const [id, rel] = positional;
+      if (!id || !rel) {
+        console.error('Usage: od files read <projectId> <relpath>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/files/${rel.split('/').map(encodeURIComponent).join('/')}`);
+      if (!resp.ok) return structuredHttpFailure(resp, 'project-not-found');
+      const buf = Buffer.from(await resp.arrayBuffer());
+      process.stdout.write(buf);
+      return;
+    }
+    case 'upload': {
+      const positional = rest.filter((a) => !a.startsWith('-')
+        && a !== flags.as);
+      const [id, localPath] = positional;
+      if (!id || !localPath) {
+        console.error('Usage: od files upload <projectId> <localpath> [--as <relpath>]');
+        process.exit(2);
+      }
+      const fs = require('node:fs');
+      const path = require('node:path');
+      const buf = fs.readFileSync(localPath);
+      const desiredName = typeof flags.as === 'string' && flags.as.length > 0
+        ? flags.as
+        : path.basename(localPath);
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/files`, {
+        method:  'POST',
+        headers: { 'content-type': 'application/json' },
+        body:    JSON.stringify({
+          name: desiredName,
+          content: buf.toString('base64'),
+          encoding: 'base64',
+        }),
+      });
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      console.log(`[files] uploaded ${data?.file?.name ?? desiredName}`);
+      return;
+    }
+    case 'write': {
+      const positional = rest.filter((a) => !a.startsWith('-'));
+      const [id, rel] = positional;
+      if (!id || !rel) {
+        console.error('Usage: od files write <projectId> <relpath> [< stdin]');
+        process.exit(2);
+      }
+      // Read stdin synchronously into a buffer.
+      const fs = require('node:fs');
+      let chunks = [];
+      try {
+        const stdin = fs.readFileSync(0);
+        chunks = [stdin];
+      } catch (err) {
+        console.error(`stdin read failed: ${err.message ?? err}`);
+        process.exit(1);
+      }
+      const body = Buffer.concat(chunks);
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/files`, {
+        method:  'POST',
+        headers: { 'content-type': 'application/json' },
+        body:    JSON.stringify({
+          name: rel,
+          content: body.toString('utf8'),
+          encoding: 'utf8',
+        }),
+      });
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      console.log(`[files] wrote ${data?.file?.name ?? rel}`);
+      return;
+    }
+    case 'delete': {
+      const positional = rest.filter((a) => !a.startsWith('-'));
+      const [id, name] = positional;
+      if (!id || !name) {
+        console.error('Usage: od files delete <projectId> <name>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      if (!resp.ok) return structuredHttpFailure(resp);
+      console.log(`[files] deleted ${name}`);
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od files ${sub}`);
+      process.exit(2);
+  }
+}
+
+async function runConversation(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage:
+  od conversation list <projectId>           List conversations in a project.
+  od conversation info <conversationId>      Print one conversation.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base.
+  --json               Emit raw JSON.`);
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flags = parseFlags(rest, { string: PROJECT_STRING_FLAGS, boolean: PROJECT_BOOLEAN_FLAGS });
+  const base = projectDaemonUrl(flags).replace(/\/$/, '');
+  switch (sub) {
+    case 'list': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od conversation list <projectId>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/projects/${encodeURIComponent(id)}/conversations`);
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      return;
+    }
+    case 'info': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od conversation info <conversationId>');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/conversations/${encodeURIComponent(id)}`);
+      if (!resp.ok) return structuredHttpFailure(resp);
+      const data = await resp.json();
+      process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+      return;
+    }
+    default:
+      console.error(`unknown subcommand: od conversation ${sub}`);
+      process.exit(2);
+  }
 }
