@@ -115,7 +115,11 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `apps/daemon/src/plugins/publish.ts` | shipped | Phase 4 — `od plugin publish --to <catalog>` URL builder |
 | `apps/daemon/src/plugins/bundled.ts` | shipped | Phase 4 (§23.3.5 entry slice) — boot walker for `plugins/_official/**` |
 | `apps/daemon/src/plugins/atom-bodies.ts` | shipped | Phase 4 (§23.3.2 entry slice) — bundled-atom SKILL.md body loader |
-| `plugins/_official/atoms/<atom>/{SKILL.md,open-design.json}` | shipped | Phase 4 (§23.3.2 entry slice) — bundled atom SKILL.md fragments |
+| `apps/daemon/src/plugins/atoms/build-test.ts` | shipped | Phase 7 — typecheck + test shell-out runner; emits build.passing + tests.passing signals |
+| `apps/daemon/src/plugins/atoms/code-import.ts` | shipped | Phase 7 — repo walker writing normalised `<cwd>/code/index.json` |
+| `apps/daemon/src/plugins/atoms/handoff.ts` | shipped | Phase 8 — recordHandoff + isDeployableAppEligible helpers |
+| `plugins/_official/atoms/<atom>/{SKILL.md,open-design.json}` | shipped | Phase 4 / 6 / 7 / 8 — 13 first-party atom plugins (4 implemented + 9 reserved fragments) |
+| `plugins/_official/scenarios/<id>/{SKILL.md,open-design.json}` | shipped | Phase 4 (§23.3.3) — 4 default-pipeline scenario plugins (one per taskKind) |
 | `packages/agui-adapter/` | shipped | Phase 4 — pure-TS AG-UI canonical event encoder |
 | `packages/contracts/src/prompts/atom-block.ts` | shipped | Phase 4 — `renderActiveStageBlock(stageId, bodies)` pure renderer |
 | `tools/pack/docker-compose.yml` | shipped | Phase 5 — hosted-mode reference manifest |
@@ -486,9 +490,9 @@ Validation
 
 These are tracked but **not part of v1 sign-off**. Listed here so spec patches that promote `(planned)` atoms have a place to update.
 
-- [ ] **Phase 6 — figma-migration native**: implement `figma-extract` + `token-map`; ship official `figma-migration` plugin. **Substrate landed (plan §3.M3): SKILL.md + open-design.json for both ids ship under `plugins/_official/atoms/`; the bundled boot walker registers them at startup. Implementation (Figma REST + node walk + token map heuristic) is the next PR.**
-- [ ] **Phase 7 — code-migration native** (§20.3 §21.3.2): `code-import`, `design-extract`, `rewrite-plan`, `patch-edit`, `diff-review`, `build-test` evaluator; freeze target-stack contract; freeze design-token mapping contract. **Substrate landed (plan §3.M4): SKILL.md + open-design.json for all six ids ship under `plugins/_official/atoms/`; the prompt fragments lock the per-atom output shape (e.g. `code/index.json`, `plan/steps.json`, `critique/build-test.json`) so the implementation PR reads the same contract.**
-- [ ] **Phase 8 — production code delivery native**: repo-aware multi-file patch orchestration; native review-and-apply surface; promote `handoffKind: 'deployable-app'` from reservation to implementation. **Substrate landed (plan §3.M4): `handoff` atom SKILL.md ships, locking the seven `exportTargets[].surface` enum values.**
+- [ ] **Phase 6 — figma-migration native**: implement `figma-extract` + `token-map`; ship official `figma-migration` plugin. **Substrate landed (plan §3.M3): SKILL.md + open-design.json for both ids; bundled scenario plugin `od-figma-migration` registered. The Figma REST shell-out + token-map heuristic stay scheduled.**
+- [ ] **Phase 7 — code-migration native** (§20.3 §21.3.2): `code-import`, `design-extract`, `rewrite-plan`, `patch-edit`, `diff-review`, `build-test` evaluator; freeze target-stack contract; freeze design-token mapping contract. **Substrate + two implementations landed (plan §3.N1 / §3.N2): `runBuildTest()` shells out and emits `build.passing` + `tests.passing` signals, `runCodeImport()` walks a repo into `code/index.json`. Bundled scenario plugin `od-code-migration` ships the canonical pipeline. The remaining four (`design-extract`, `rewrite-plan`, `patch-edit`, `diff-review`) keep their SKILL.md fragments + reserved ids; impls stay scheduled.**
+- [ ] **Phase 8 — production code delivery native**: repo-aware multi-file patch orchestration; native review-and-apply surface; promote `handoffKind: 'deployable-app'` from reservation to implementation. **Substrate landed (plan §3.N3): `recordHandoff()` enforces append-only `exportTargets` / `deployTargets`, `isDeployableAppEligible()` centralises the §11.5.1 promotion rule. `ArtifactManifest` carries the full reserved provenance surface. The native review-and-apply UI stays scheduled.**
 
 ---
 
@@ -545,10 +549,10 @@ Plus repo-wide gates
 
 | Field | Value |
 | --- | --- |
-| Current phase | Phase 2A + 1 + 1.5 + 2B + 2C entry slice + 3 (full) + 4 (full minus the live OD_BUNDLED_ATOM_PROMPTS rollout) + 5 (full minus the AWS SDK + postgres adapter wiring) + 6 / 7 / 8 atom-prompt substrate |
-| Next planned PR | (a) Promote OD_BUNDLED_ATOM_PROMPTS=1 to the daemon default once the prompt fragment library covers DISCOVERY_AND_PHILOSOPHY's responsibilities; (b) AWS SDK wiring inside S3ProjectStorage; (c) postgres adapter wiring inside the DaemonDb resolver; (d) Phase 6 figma-extract + token-map shell-out implementations; (e) Phase 7 code-import + design-extract + rewrite-plan + patch-edit + diff-review + build-test shell-out implementations; (f) Phase 8 deployable-app handoff path + ArtifactManifest.handoffKind='deployable-app' promotion. |
+| Current phase | Phase 2A + 1 + 1.5 + 2B + 2C entry slice + 3 (full) + 4 (full minus the live OD_BUNDLED_ATOM_PROMPTS rollout) + 5 (full minus the AWS SDK + postgres adapter wiring) + 6 substrate + 7 (build-test + code-import impls) + 8 (handoff helper + ArtifactManifest provenance) + scenarios bundle |
+| Next planned PR | (a) Promote OD_BUNDLED_ATOM_PROMPTS=1 to default once the bundled fragment library covers DISCOVERY_AND_PHILOSOPHY's responsibilities; (b) AWS SDK wiring inside S3ProjectStorage; (c) postgres adapter wiring inside the DaemonDb resolver; (d) Phase 6 figma-extract REST shell-out + token-map heuristic; (e) Phase 7 design-extract / rewrite-plan / patch-edit / diff-review impls (build-test + code-import already landed); (f) Phase 8 native review-and-apply UI + lookup-bundled-scenario fallback for omitted od.pipeline. |
 | Open spec push-backs | none — PB1 / PB2 resolved (see §7) |
-| Last sync against `docs/plugins-spec.md` | 2026-05-09 (OD_SNAPSHOT_RETENTION_DAYS referenced-row TTL + OD_BUNDLED_ATOM_PROMPTS runtime wiring + Phase 6 / 7 / 8 atom SKILL.md substrate landing) |
+| Last sync against `docs/plugins-spec.md` | 2026-05-09 (build-test + code-import + handoff atom impls + ArtifactManifest provenance fields + bundled scenario plugins landing) |
 
 Update this table on every plugin-system PR merge. When the value of "Current phase" advances, also flip the matching deliverables in §6 and the modules in §3.
 
