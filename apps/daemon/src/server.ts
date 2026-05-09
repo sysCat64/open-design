@@ -5603,6 +5603,7 @@ export async function startServer({
     designSystemId,
     streamFormat,
     connectedExternalMcp,
+    appliedPluginSnapshotId,
   }) => {
     const project =
       typeof projectId === 'string' && projectId
@@ -5707,6 +5708,36 @@ export async function startServer({
     // non-plain adapters and we'd emit the panel for a run the orchestrator
     // skips. Gating the threading itself keeps composer + orchestrator in
     // exact lockstep regardless of which side enforces eligibility.
+    // Plan §3.M2 / spec §23.4 — when OD_BUNDLED_ATOM_PROMPTS=1 is set
+    // AND the run carries a snapshot with a pipeline, render each
+    // stage's atoms[] into `## Active stage` blocks via the contracts
+    // helper. Default behaviour (flag unset OR no snapshot) is
+    // byte-equal to today's prompt.
+    let activeStageBlocks;
+    if (
+      process.env.OD_BUNDLED_ATOM_PROMPTS === '1'
+      && typeof appliedPluginSnapshotId === 'string'
+      && appliedPluginSnapshotId.length > 0
+    ) {
+      try {
+        const snap = getSnapshot(db, appliedPluginSnapshotId);
+        const stages = snap?.pipeline?.stages ?? [];
+        if (stages.length > 0) {
+          const { loadAtomBodies } = await import('./plugins/atom-bodies.js');
+          const { renderActiveStageBlock } = await import('@open-design/contracts');
+          const blocks = [];
+          for (const stage of stages) {
+            const bodies = await loadAtomBodies(db, stage.atoms ?? []);
+            const block = renderActiveStageBlock({ stageId: stage.id, bodies });
+            if (block.trim().length > 0) blocks.push(block);
+          }
+          if (blocks.length > 0) activeStageBlocks = blocks;
+        }
+      } catch (err) {
+        console.warn(`[plugins] activeStageBlocks build failed: ${(err)?.message ?? err}`);
+      }
+    }
+
     const prompt = composeSystemPrompt({
       agentId,
       includeCodexImagegenOverride: false,
@@ -5725,6 +5756,7 @@ export async function startServer({
       connectedExternalMcp: Array.isArray(connectedExternalMcp)
         ? connectedExternalMcp
         : undefined,
+      ...(activeStageBlocks ? { activeStageBlocks } : {}),
     });
     // The chat handler also needs to know where the active skill lives
     // on disk so it can stage a per-project copy of its side files
@@ -6023,6 +6055,10 @@ export async function startServer({
         designSystemId,
         streamFormat: def?.streamFormat ?? 'plain',
         connectedExternalMcp,
+        // Plan §3.M2 — forward the run's snapshot id so the prompt
+        // composer can splice in `## Active stage` blocks when
+        // OD_BUNDLED_ATOM_PROMPTS=1 is set.
+        appliedPluginSnapshotId: run?.appliedPluginSnapshotId ?? null,
       });
 
     // Make skill side files reachable through three layers, in order of
