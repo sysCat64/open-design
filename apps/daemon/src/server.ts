@@ -2115,6 +2115,33 @@ export async function startServer({
     }
   });
 
+  // Plan §3.II1 — `od plugin events tail`. SSE-backed live event
+  // stream of plugin lifecycle events from the in-memory ring
+  // buffer. On open: emits the buffered backlog as 'event: backlog'
+  // entries (capped at the buffer's MAX), then forwards every
+  // newly-recorded event as 'event: plugin' with the same shape.
+  // Optional ?since=<id> trims the backlog.
+  app.get('/api/plugins/events', async (req, res) => {
+    const since = Number(typeof req.query.since === 'string' ? req.query.since : 0);
+    const { pluginEventSnapshot, subscribePluginEvents } = await import('./plugins/events.js');
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    // Emit the backlog so a tail consumer doesn't miss installs
+    // that happened just before they connected.
+    const backlog = pluginEventSnapshot(Number.isFinite(since) && since > 0 ? since : 0);
+    for (const ev of backlog) {
+      res.write(`event: backlog\ndata: ${JSON.stringify(ev)}\n\n`);
+    }
+
+    const unsubscribe = subscribePluginEvents((ev) => {
+      res.write(`event: plugin\ndata: ${JSON.stringify(ev)}\n\n`);
+    });
+    req.on('close', () => { unsubscribe(); });
+  });
+
   // Plan §3.HH2 — `od daemon db vacuum`. Runs SQLite VACUUM to
   // reclaim space after large delete batches (snapshot prune,
   // plugin uninstall, etc.). Reports before / after sizes so the

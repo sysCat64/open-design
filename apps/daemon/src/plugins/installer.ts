@@ -29,6 +29,7 @@ import {
 } from './registry.js';
 import type { InstalledPluginRecord, PluginSourceKind } from '@open-design/contracts';
 import type Database from 'better-sqlite3';
+import { recordPluginEvent } from './events.js';
 
 type SqliteDb = Database.Database;
 
@@ -376,6 +377,21 @@ export async function* installFromLocalFolder(
   yield { kind: 'progress', phase: 'persisting', message: 'Writing installed_plugins row' };
   upsertInstalledPlugin(db, parsed.record);
 
+  // Plan §3.II1 — emit a 'plugin.installed' event so ops dashboards
+  // + `od plugin events tail` see the install land in the in-memory
+  // ring buffer. Best-effort; recordPluginEvent never throws.
+  recordPluginEvent({
+    kind:     'plugin.installed',
+    pluginId: parsed.record.id,
+    details:  {
+      version:    parsed.record.version,
+      sourceKind: parsed.record.sourceKind,
+      source:     parsed.record.source,
+      trust:      parsed.record.trust,
+      warnings:   warnings.length,
+    },
+  });
+
   yield { kind: 'success', plugin: parsed.record, warnings };
 }
 
@@ -403,6 +419,16 @@ export async function uninstallPlugin(
     removedFolder = folder;
   } catch (err) {
     return { ok: removed, warning: `Folder ${folder} removal failed: ${(err as Error).message}` };
+  }
+  // Plan §3.II1 — emit a 'plugin.uninstalled' event when the
+  // registry row was actually removed. We skip the event when
+  // both removed=false AND folder didn't exist (no-op uninstall).
+  if (removed || removedFolder !== undefined) {
+    recordPluginEvent({
+      kind:     'plugin.uninstalled',
+      pluginId: id,
+      details:  removedFolder ? { removedFolder } : {},
+    });
   }
   return { ok: removed || removedFolder !== undefined, removedFolder };
 }

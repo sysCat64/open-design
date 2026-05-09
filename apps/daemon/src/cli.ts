@@ -837,6 +837,7 @@ async function runPlugin(args) {
     case 'snapshots': return runPluginSnapshots(rest);
     case 'simulate':  return runPluginSimulate(rest);
     case 'verify':    return runPluginVerify(rest);
+    case 'events':    return runPluginEvents(rest);
     case 'run':       return runPluginRun(rest);
     case 'scaffold': return runPluginScaffold(rest);
     case 'validate': return runPluginValidate(rest);
@@ -1751,6 +1752,114 @@ async function runPluginInstall(rest) {
 // Plan §3.Z2 — `od plugin upgrade <id>`. Re-installs the plugin
 // from its recorded source. Streams the same SSE event shape as
 // install, so 'progress' / 'success' / 'error' arrive verbatim.
+// Plan §3.II1 — `od plugin events tail`. Tails the daemon's
+// in-memory plugin event ring buffer via SSE. -f keeps the
+// connection open and prints live events; otherwise prints the
+// backlog and exits when the daemon closes the stream.
+async function runPluginEvents(rest) {
+  const sub = rest[0];
+  if (!sub || sub === 'help' || rest.includes('--help') || rest.includes('-h')) {
+    console.log(`Usage:
+  od plugin events tail [-f] [--since <id>] [--json] [--daemon-url <url>]
+
+Tails the daemon's in-memory plugin event ring buffer:
+  - 'plugin.installed'   when od plugin install / upgrade succeeds
+  - 'plugin.uninstalled' when od plugin uninstall succeeds
+  - other lifecycle events (apply / snapshot-prune) as they wire in
+
+Backlog is emitted on connect so a tail consumer doesn't miss
+events that fired just before they connected. Optional --since
+<id> trims the backlog. -f keeps the connection open + prints
+new events live.`);
+    process.exit(sub ? 0 : 2);
+  }
+  if (sub !== 'tail') {
+    console.error(`unknown subcommand: od plugin events ${sub}`);
+    process.exit(2);
+  }
+  const flags = parseFlags(rest.slice(1), {
+    string:  new Set([...PLUGIN_STRING_FLAGS, 'since']),
+    boolean: new Set([...PLUGIN_BOOLEAN_FLAGS, 'f', 'follow']),
+  });
+  const follow = flags.f === true || flags.follow === true;
+  const since = typeof flags.since === 'string' ? Number(flags.since) : 0;
+  const base = pluginDaemonUrl(flags).replace(/\/$/, '');
+  const url = `${base}/api/plugins/events${Number.isFinite(since) && since > 0 ? `?since=${since}` : ''}`;
+  const resp = await fetch(url, { headers: { accept: 'text/event-stream' } });
+  if (!resp.ok || !resp.body) {
+    console.error(`GET ${url} failed: ${resp.status} ${await resp.text()}`);
+    process.exit(1);
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const renderEvent = (channel, data) => {
+    if (flags.json) {
+      process.stdout.write(JSON.stringify({ channel, ...data }) + '\n');
+      return;
+    }
+    const ts = data?.at ? new Date(data.at).toISOString() : '?';
+    const id = data?.id ?? '?';
+    const tag = channel === 'backlog' ? '[bk]' : '[ev]';
+    const detailKeys = data?.details ? Object.keys(data.details).slice(0, 3).join(',') : '';
+    console.log(`${tag} #${id}  ${ts}  ${data?.kind ?? '?'}  pluginId=${data?.pluginId ?? '-'}` +
+      (detailKeys ? `  details=${detailKeys}` : ''));
+  };
+  // Read until the daemon closes the stream OR --follow keeps it open
+  // forever. Without --follow we still let the daemon drain the
+  // backlog naturally; the route emits all backlog entries first,
+  // and our reader exits when the connection closes (which the
+  // daemon never does on its own, so we add a small idle timer).
+  if (!follow) {
+    // Non-follow: drain backlog, then exit after a short idle period
+    // (the route never naturally closes; the SSE backlog is a one-shot
+    // stream of event entries).
+    let lastChunkAt = Date.now();
+    const idleMs = 200;
+    const idleTimer = setInterval(() => {
+      if (Date.now() - lastChunkAt > idleMs) {
+        clearInterval(idleTimer);
+        try { reader.cancel(); } catch { /* ignore */ }
+      }
+    }, 100);
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        lastChunkAt = Date.now();
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() ?? '';
+        for (const block of blocks) {
+          const lines = block.split('\n');
+          const ev = lines.find((l) => l.startsWith('event: '))?.slice('event: '.length) ?? 'message';
+          const dat = lines.find((l) => l.startsWith('data: '))?.slice('data: '.length);
+          if (!dat) continue;
+          try { renderEvent(ev, JSON.parse(dat)); } catch { /* ignore */ }
+        }
+      }
+    } finally {
+      clearInterval(idleTimer);
+    }
+    return;
+  }
+  // Follow mode: read forever.
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split('\n\n');
+    buffer = blocks.pop() ?? '';
+    for (const block of blocks) {
+      const lines = block.split('\n');
+      const ev = lines.find((l) => l.startsWith('event: '))?.slice('event: '.length) ?? 'message';
+      const dat = lines.find((l) => l.startsWith('data: '))?.slice('data: '.length);
+      if (!dat) continue;
+      try { renderEvent(ev, JSON.parse(dat)); } catch { /* ignore */ }
+    }
+  }
+}
+
 // Plan §3.FF1 — `od plugin verify <pluginId>` CI meta-command.
 //
 // Reads an optional .od-verify.json config from the plugin folder
@@ -2809,6 +2918,8 @@ function printPluginHelp() {
                                           (no LLM in the loop).
   od plugin verify <pluginId>             CI meta-command: doctor + simulate + canon --check
                                           driven by an .od-verify.json config in the plugin folder.
+  od plugin events tail [-f] [--since N]  Tail the in-memory plugin event ring buffer
+                                          (install / uninstall / upgrade / etc.).
   od plugin diff <a> <b> [--json]         Compare two installed plugins by id.
   od plugin replay <runId> --snapshot-id <id>
                                           Re-emit the immutable snapshot a run launched against.

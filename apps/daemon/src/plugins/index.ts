@@ -56,6 +56,14 @@ export {
   type VerifyCheckOutcome,
   type VerifyCheckId,
 } from './verify.js';
+export {
+  recordPluginEvent,
+  pluginEventSnapshot,
+  subscribePluginEvents,
+  pluginEventBufferSize,
+  type PluginEvent,
+  type PluginEventKind,
+} from './events.js';
 export * from './atoms/build-test.js';
 export * from './atoms/code-import.js';
 export * from './atoms/design-extract.js';
