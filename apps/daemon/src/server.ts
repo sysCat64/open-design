@@ -3399,12 +3399,51 @@ export async function startServer({
       listSkills(SKILLS_DIR),
       listDesignSystems(DESIGN_SYSTEMS_DIR),
     ]);
+    // Spec §23.3.3: surface the bundled scenario plugins so apply()
+    // can fall back to the matching scenario's pipeline when the
+    // consumer plugin omits od.pipeline. Each scenario carries a
+    // `taskKind` that picks the match.
+    const scenarios = collectBundledScenarios();
     return {
       skills: skills.map((s) => ({ id: s.id, title: s.name, description: s.description })),
       designSystems: designSystems.map((d) => ({ id: d.id, title: d.title })),
       craft: [],
       atoms: FIRST_PARTY_ATOMS.map((a) => ({ id: a.id, label: a.label })),
+      scenarios,
     };
+  }
+
+  // Pure read off `installed_plugins`: rows whose source_kind='bundled'
+  // AND od.kind='scenario' AND od.pipeline is non-empty become entries
+  // the apply path can fall back to. Scenario plugins from third-party
+  // sources are intentionally NOT trusted as defaults — the bundled
+  // boot walker (apps/daemon/src/plugins/bundled.ts) is the only writer
+  // of source_kind='bundled', so this function never grants the
+  // privilege to user-installed scenarios.
+  function collectBundledScenarios() {
+    const out: Array<{
+      id: string;
+      taskKind: 'new-generation' | 'figma-migration' | 'code-migration' | 'tune-collab';
+      pipeline: NonNullable<NonNullable<import('@open-design/contracts').PluginManifest['od']>['pipeline']>;
+    }> = [];
+    try {
+      const all = listInstalledPlugins(db);
+      for (const row of all) {
+        if (row.sourceKind !== 'bundled') continue;
+        const od = row.manifest.od;
+        if (!od || od.kind !== 'scenario') continue;
+        if (!od.pipeline || !Array.isArray(od.pipeline.stages) || od.pipeline.stages.length === 0) continue;
+        const taskKind = (od.taskKind ?? 'new-generation') as 'new-generation' | 'figma-migration' | 'code-migration' | 'tune-collab';
+        if (taskKind !== 'new-generation' && taskKind !== 'figma-migration' &&
+            taskKind !== 'code-migration' && taskKind !== 'tune-collab') continue;
+        out.push({ id: row.id, taskKind, pipeline: od.pipeline });
+      }
+    } catch {
+      // On a fresh install the table may not exist yet; surface no
+      // scenarios rather than crash the apply path.
+      return [];
+    }
+    return out;
   }
 
   app.post('/api/plugins/:id/apply', async (req, res) => {

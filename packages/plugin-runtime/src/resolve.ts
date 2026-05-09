@@ -1,6 +1,7 @@
 import type {
   ContextItem,
   PluginManifest,
+  PluginPipeline,
   ResolvedContext,
 } from '@open-design/contracts';
 
@@ -20,6 +21,26 @@ export interface RegistryView {
   // `od.design_system.requires: true` without a concrete ref. Daemon
   // supplies the active project's design system here.
   activeProjectDesignSystem?: { id: string; title?: string } | undefined;
+  // Spec §23.3.3: bundled scenario plugins. When a non-scenario plugin
+  // omits `od.pipeline`, apply consults this list and uses the
+  // matching scenario's pipeline (chosen by `taskKind`). The first
+  // entry that matches wins; later entries are ignored. Daemons that
+  // don't bundle scenarios pass an empty list — apply then leaves the
+  // pipeline undefined and the agent falls back to its default loop.
+  scenarios?: ReadonlyArray<ScenarioRegistryEntry> | undefined;
+}
+
+export interface ScenarioRegistryEntry {
+  // The scenario plugin's id (e.g. 'od-code-migration'). Used by tests
+  // and audits to attribute the fallback choice.
+  id: string;
+  // The taskKind enum value this scenario claims to default for. Apply
+  // matches against `manifest.od.taskKind` (or 'new-generation' when
+  // absent).
+  taskKind: 'new-generation' | 'figma-migration' | 'code-migration' | 'tune-collab';
+  // The scenario plugin's `od.pipeline`. Copied verbatim into the
+  // applied snapshot when the consumer plugin lacks one of its own.
+  pipeline: PluginPipeline;
 }
 
 export interface ResolveOptions {

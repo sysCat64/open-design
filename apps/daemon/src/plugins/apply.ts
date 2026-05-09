@@ -15,6 +15,7 @@
 
 import {
   manifestSourceDigest,
+  resolveAppliedPipeline,
   resolveContext,
   type RegistryView,
 } from '@open-design/plugin-runtime';
@@ -118,6 +119,18 @@ export function applyPlugin(input: ApplyInput): ApplyComputed {
 
   const taskKind = (manifest.od?.taskKind ?? 'new-generation') as AppliedPluginSnapshot['taskKind'];
 
+  // Spec §23.3.3: when the plugin omits `od.pipeline`, fall back to
+  // the bundled scenario whose taskKind matches. The registry view
+  // carries the lookup; daemon callers populate it from the
+  // `installed_plugins` table filtered to source_kind='bundled' AND
+  // od.kind='scenario'. Tests + non-daemon callers can pass an empty
+  // list, in which case the pipeline stays undefined.
+  const pipelineResolution = resolveAppliedPipeline({
+    manifest,
+    scenarios: input.registry.scenarios,
+  });
+  const appliedPipeline = pipelineResolution.pipeline;
+
   const projectMetadata: PluginProjectMetadataPatch = {
     name: manifest.title ?? manifest.name,
     taskKind,
@@ -152,7 +165,7 @@ export function applyPlugin(input: ApplyInput): ApplyComputed {
     connectorsRequired,
     connectorsResolved,
     mcpServers,
-    pipeline:             manifest.od?.pipeline,
+    pipeline:             appliedPipeline,
     genuiSurfaces,
     pluginTitle:          manifest.title ?? manifest.name,
     pluginDescription:    manifest.description,
@@ -166,7 +179,7 @@ export function applyPlugin(input: ApplyInput): ApplyComputed {
     inputs:              manifest.od?.inputs ?? [],
     assets,
     mcpServers,
-    pipeline:            manifest.od?.pipeline,
+    pipeline:            appliedPipeline,
     genuiSurfaces,
     projectMetadata,
     trust,
