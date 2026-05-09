@@ -3,8 +3,10 @@ import {
   DEFAULT_CONFIG,
   loadConfig,
   mergeDaemonConfig,
+  saveConfig,
   syncComposioConfigToDaemon,
   syncConfigToDaemon,
+  syncMediaProvidersToDaemon,
 } from '../../src/state/config';
 import type { AppConfig } from '../../src/types';
 
@@ -95,6 +97,43 @@ describe('syncConfigToDaemon', () => {
       },
     });
   });
+
+  it('syncs daemon-owned privacy decision fields', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await syncConfigToDaemon({
+      ...DEFAULT_CONFIG,
+      installationId: 'install-1',
+      privacyDecisionAt: 1778244000000,
+      telemetry: { metrics: true, content: true, artifactManifest: false },
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      installationId: 'install-1',
+      privacyDecisionAt: 1778244000000,
+      telemetry: { metrics: true, content: true, artifactManifest: false },
+    });
+  });
+});
+
+describe('syncMediaProvidersToDaemon', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('fetch', originalFetch);
+  });
+
+  it('throws when a forced media sync fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 503 })));
+
+    await expect(
+      syncMediaProvidersToDaemon({}, { force: true, throwOnError: true }),
+    ).rejects.toThrow('Media config save failed');
+  });
 });
 
 describe('mergeDaemonConfig', () => {
@@ -133,6 +172,28 @@ describe('mergeDaemonConfig', () => {
     expect(merged.agentCliEnv).toEqual({
       codex: { CODEX_HOME: '~/.codex-new', CODEX_BIN: '~/bin/codex-new' },
     });
+  });
+
+  it('copies privacyDecisionAt from daemon config', () => {
+    const merged = mergeDaemonConfig(DEFAULT_CONFIG, {
+      installationId: 'install-1',
+      privacyDecisionAt: 1778244000000,
+      telemetry: { metrics: true },
+    });
+
+    expect(merged.installationId).toBe('install-1');
+    expect(merged.privacyDecisionAt).toBe(1778244000000);
+    expect(merged.telemetry).toEqual({ metrics: true });
+  });
+
+  it('migrates old daemon privacy config to a resolved decision', () => {
+    const merged = mergeDaemonConfig(DEFAULT_CONFIG, {
+      installationId: 'install-1',
+      telemetry: { metrics: true },
+    });
+
+    expect(merged.installationId).toBe('install-1');
+    expect(typeof merged.privacyDecisionAt).toBe('number');
   });
 });
 
@@ -259,6 +320,19 @@ describe('loadConfig', () => {
     expect(loadConfig().accentColor).toBe(DEFAULT_CONFIG.accentColor);
   });
 
+  it('falls back to the default Orbit time for out-of-range saved times', () => {
+    const savedConfig: Partial<AppConfig> = {
+      orbit: {
+        enabled: true,
+        time: '99:99',
+        templateSkillId: 'orbit-general',
+      },
+    };
+    store.set('open-design:config', JSON.stringify(savedConfig));
+
+    expect(loadConfig().orbit?.time).toBe(DEFAULT_CONFIG.orbit?.time);
+  });
+
   it('returns defaults for malformed localStorage JSON', () => {
     store.set('open-design:config', '{broken-json');
 
@@ -268,5 +342,21 @@ describe('loadConfig', () => {
   it('sets an explicit apiProtocol for new default configs', () => {
     expect(DEFAULT_CONFIG.apiProtocol).toBe('anthropic');
     expect(DEFAULT_CONFIG.configMigrationVersion).toBe(1);
+  });
+});
+
+describe('saveConfig', () => {
+  it('keeps daemon-owned privacy fields out of localStorage', () => {
+    saveConfig({
+      ...DEFAULT_CONFIG,
+      installationId: 'install-1',
+      privacyDecisionAt: 1778244000000,
+      telemetry: { metrics: true },
+    });
+
+    const saved = JSON.parse(store.get('open-design:config') ?? '{}');
+    expect(saved.installationId).toBeUndefined();
+    expect(saved.privacyDecisionAt).toBeUndefined();
+    expect(saved.telemetry).toBeUndefined();
   });
 });

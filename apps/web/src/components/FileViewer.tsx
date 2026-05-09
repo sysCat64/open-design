@@ -36,6 +36,7 @@ import {
   exportAsJsx,
   exportAsMd,
   exportAsPdf,
+  exportProjectAsPdf,
   exportProjectAsZip,
   exportReactComponentAsHtml,
   exportReactComponentAsZip,
@@ -377,6 +378,7 @@ export function LiveArtifactViewer({
   onRefreshArtifacts?: () => Promise<void> | void;
 }) {
   const t = useT();
+  const tabs = useMemo(() => liveArtifactViewerTabs(t), [t]);
   const [mode, setMode] = useState<LiveArtifactViewerTab>('preview');
   const [detail, setDetail] = useState<LiveArtifact | null>(null);
   const [loading, setLoading] = useState(true);
@@ -559,7 +561,7 @@ export function LiveArtifactViewer({
         </div>
         <div className="viewer-toolbar-actions">
           <div className="viewer-tabs">
-            {LIVE_ARTIFACT_VIEWER_TABS.map((tab) => (
+            {tabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
@@ -676,7 +678,7 @@ export function LiveArtifactViewer({
             <iframe
               data-testid="live-artifact-preview-frame"
               title={liveArtifact.title}
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-popups"
               src={previewUrl}
             />
           </div>
@@ -689,7 +691,7 @@ export function LiveArtifactViewer({
             reloadKey={reloadKey}
           />
         ) : mode === 'data' ? (
-          <JsonPanel value={dataPayload} emptyLabel="No data.json cache available." />
+          <JsonPanel value={dataPayload} emptyLabel={t('liveArtifact.viewer.dataEmpty')} />
         ) : (
           <LiveArtifactRefreshHistoryPanel
             liveArtifact={detail}
@@ -748,16 +750,27 @@ function refreshErrorMessage(error: unknown, t: TranslateFn): string {
   return t('liveArtifact.refresh.genericFailure');
 }
 
-const LIVE_ARTIFACT_VIEWER_TABS: Array<{ id: LiveArtifactViewerTab; label: string }> = [
-  { id: 'preview', label: 'Preview' },
-  { id: 'code', label: 'Code' },
-  { id: 'data', label: 'Data' },
-  { id: 'refresh-history', label: 'Refresh history' },
-];
+function liveArtifactViewerTabs(t: TranslateFn): Array<{ id: LiveArtifactViewerTab; label: string }> {
+  return [
+    { id: 'preview', label: t('liveArtifact.viewer.tabPreview') },
+    { id: 'code', label: t('liveArtifact.viewer.tabCode') },
+    { id: 'data', label: t('liveArtifact.viewer.tabData') },
+    { id: 'refresh-history', label: t('liveArtifact.viewer.tabRefreshHistory') },
+  ];
+}
 
 type LiveArtifactCodeVariant = 'template' | 'rendered-source';
 
-function LiveArtifactCodePanel({ projectId, artifactId, reloadKey }: { projectId: string; artifactId: string; reloadKey: number }) {
+function LiveArtifactCodePanel({
+  projectId,
+  artifactId,
+  reloadKey,
+}: {
+  projectId: string;
+  artifactId: string;
+  reloadKey: number;
+}) {
+  const t = useT();
   const [variant, setVariant] = useState<LiveArtifactCodeVariant>('template');
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -783,38 +796,45 @@ function LiveArtifactCodePanel({ projectId, artifactId, reloadKey }: { projectId
     <div className="live-artifact-code-panel">
       <div className="live-artifact-code-header">
         <div className="live-artifact-code-copy">
-          <strong>{variant === 'template' ? 'Template HTML' : 'Rendered HTML'}</strong>
+          <strong>
+            {variant === 'template'
+              ? t('liveArtifact.viewer.code.templateHeading')
+              : t('liveArtifact.viewer.code.renderedHeading')}
+          </strong>
           <span>
             {variant === 'template'
-              ? 'The editable template used with data.json to generate the preview.'
-              : 'The generated index.html currently loaded by Preview.'}
+              ? t('liveArtifact.viewer.code.templateHelp')
+              : t('liveArtifact.viewer.code.renderedHelp')}
           </span>
         </div>
-        <div className="viewer-tabs live-artifact-code-tabs" aria-label="Code variant">
+        <div
+          className="viewer-tabs live-artifact-code-tabs"
+          aria-label={t('liveArtifact.viewer.code.variantAria')}
+        >
           <button
             type="button"
             className={`viewer-tab ${variant === 'template' ? 'active' : ''}`}
             onClick={() => setVariant('template')}
           >
-            Template
+            {t('liveArtifact.viewer.code.variantTemplate')}
           </button>
           <button
             type="button"
             className={`viewer-tab ${variant === 'rendered-source' ? 'active' : ''}`}
             onClick={() => setVariant('rendered-source')}
           >
-            Rendered
+            {t('liveArtifact.viewer.code.variantRendered')}
           </button>
         </div>
       </div>
       {loading ? (
-        <div className="viewer-empty">Loading code…</div>
+        <div className="viewer-empty">{t('liveArtifact.viewer.code.loading')}</div>
       ) : failed ? (
-        <div className="viewer-empty">Code is not available yet.</div>
+        <div className="viewer-empty">{t('liveArtifact.viewer.code.unavailable')}</div>
       ) : code && code.trim().length > 0 ? (
         <pre className="viewer-source">{code}</pre>
       ) : (
-        <div className="viewer-empty">This code file is empty.</div>
+        <div className="viewer-empty">{t('liveArtifact.viewer.code.empty')}</div>
       )}
     </div>
   );
@@ -1399,14 +1419,16 @@ function BoardComposerPopover({
         >
           Add note
         </button>
-        <button
-          type="button"
-          className="ghost"
-          disabled={target.selectionKind === 'pod' || !draft.trim()}
-          onClick={() => void onSaveComment()}
-        >
-          Save comment
-        </button>
+        {target.selectionKind === 'pod' ? null : (
+          <button
+            type="button"
+            className="ghost"
+            disabled={!draft.trim()}
+            onClick={() => void onSaveComment()}
+          >
+            Save comment
+          </button>
+        )}
         <button
           type="button"
           className="primary"
@@ -2863,6 +2885,8 @@ function HtmlViewer({
   const [boardMode, setBoardMode] = useState(false);
   const [boardTool, setBoardTool] = useState<BoardTool>('inspect');
   const [inspectMode, setInspectMode] = useState(false);
+  // for hint managing hint box state
+  const [openHintBox, setOpenHintBox] = useState(true);
   const [manualEditMode, setManualEditMode] = useState(false);
   const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([]);
   const [selectedManualEditTarget, setSelectedManualEditTarget] = useState<ManualEditTarget | null>(null);
@@ -4213,6 +4237,7 @@ function HtmlViewer({
                   setBoardMode(false);
                   clearBoardComposer();
                   setManualEditMode(false);
+                  setOpenHintBox(true);
                 }
                 return next;
               });
@@ -4318,7 +4343,13 @@ function HtmlViewer({
                     role="menuitem"
                     onClick={() => {
                       setShareMenuOpen(false);
-                      exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck });
+                      void exportProjectAsPdf({
+                        deck: effectiveDeck,
+                        fallbackPdf: () => exportAsPdf(source ?? '', exportTitle, { deck: effectiveDeck }),
+                        filePath: file.name,
+                        projectId,
+                        title: exportTitle,
+                      });
                     }}
                   >
                     <span className="share-menu-icon"><Icon name="file" size={14} /></span>
@@ -4598,9 +4629,19 @@ function HtmlViewer({
                 error={inspectError}
               />
             ) : null}
-            {inspectMode && !activeInspectTarget ? (
-              <div className="inspect-empty-hint" data-testid="inspect-empty-hint">
+            {inspectMode && openHintBox && !activeInspectTarget ? (
+              <div className="inspect-empty-hint-container">
+                <div className="inspect-empty-hint" data-testid="inspect-empty-hint">
                 Click any element with <code>data-od-id</code> to tune its style.
+              </div>
+               <button
+                type="button"
+                title="Close Inspect Hint"
+                aria-label="Close Inspect Hint"
+                onClick={() => setOpenHintBox(false)}
+                className="orbit-artifact-ghost">
+                 <Icon className='' name='close' size={12} />
+               </button>
               </div>
             ) : null}
           </div>
@@ -4698,7 +4739,7 @@ function HtmlViewer({
       ) : null}
       {deployModalOpen ? (
         <div className="modal-backdrop" role="presentation">
-          <div className="modal deploy-modal" role="dialog" aria-modal="true">
+          <div className="modal deploy-modal deploy-flow-modal" role="dialog" aria-modal="true">
             <div className="modal-head">
               <div className="kicker">{deployProviderLabel}</div>
               <h2>{t('fileViewer.deployToProvider', { provider: deployProviderLabel })}</h2>

@@ -309,10 +309,12 @@ export const RU_DESIGN_SYSTEM_CATEGORIES: Record<string, string> = {
   'Editorial · Studio': 'Редакционная студия',
   'Retro & Nostalgic': 'Ретро и ностальгия',
   'Themed & Unique': 'Тематические и уникальные',
+  'Editorial / Personal / Publication': 'Редакционные / Персональные / Публикации',
   Uncategorized: 'Без категории',
 };
 
 export const RU_SKILL_IDS_WITH_EN_FALLBACK = [
+  'clinical-case-report',
   'dcf-valuation',
   'flowai-live-dashboard-template',
   'html-ppt-taste-brutalist',
@@ -351,6 +353,8 @@ export const RU_SKILL_IDS_WITH_EN_FALLBACK = [
   'html-ppt-zhangzara-stencil-tablet',
   'html-ppt-zhangzara-studio',
   'html-ppt-zhangzara-vellum',
+  // IB pitch-book skill (#888): English-only skill copy for now.
+  'ib-pitch-book',
   'last30days',
   'live-dashboard',
   'orbit-general',
@@ -367,6 +371,8 @@ export const RU_SKILL_IDS_WITH_EN_FALLBACK = [
   'web-prototype-taste-soft',
   'waitlist-page',
   'x-research',
+  'trading-analysis-dashboard-template',
+  'github-dashboard',
 ] as const;
 
 export const RU_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK = [
@@ -376,10 +382,12 @@ export const RU_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK = [
   'arc',
   'artistic',
   'bento',
+  'bmw-m',
   'bold',
   'brutalism',
   'cafe',
   'canva',
+  'cisco',
   'claymorphism',
   'clean',
   'colorful',
@@ -411,6 +419,7 @@ export const RU_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK = [
   'luxury',
   'material',
   'minimal',
+  'mission-control',
   'modern',
   'mono',
   'neobrutalism',
@@ -428,13 +437,16 @@ export const RU_DESIGN_SYSTEM_IDS_WITH_EN_FALLBACK = [
   'shadcn',
   'simple',
   'skeumorphism',
+  'slack',
   'sleek',
   'spacious',
   'storytelling',
   'totality-festival',
   'tetris',
+  'urdu',
   'vibrant',
   'vintage',
+  'webex',
 ] as const;
 
 export const RU_PROMPT_TEMPLATE_CATEGORIES: Record<string, string> = {

@@ -5,6 +5,7 @@ import type {
   AppConfig,
   MediaProviderCredentials,
   NotificationsConfig,
+  OrbitConfig,
   PetConfig,
 } from '../types';
 import { normalizeAccentColor } from './appearance';
@@ -41,6 +42,16 @@ export const DEFAULT_PET: PetConfig = {
   },
 };
 
+export const DEFAULT_ORBIT: OrbitConfig = {
+  enabled: false,
+  time: '08:00',
+  // Ship with the general-purpose Orbit briefing skill pre-selected so a
+  // fresh install runs against a real adaptive template instead of the
+  // bare built-in prompt. Users can clear it from Settings → Orbit to fall
+  // back to the built-in prompt or pick another scenario === 'orbit' skill.
+  templateSkillId: 'orbit-general',
+};
+
 export const DEFAULT_CONFIG: AppConfig = {
   mode: 'daemon',
   apiKey: '',
@@ -65,6 +76,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   agentCliEnv: {},
   pet: DEFAULT_PET,
   notifications: DEFAULT_NOTIFICATIONS,
+  orbit: DEFAULT_ORBIT,
 };
 
 /** Well-known providers with pre-filled base URLs. */
@@ -204,6 +216,21 @@ function normalizeNotifications(
   return { ...DEFAULT_NOTIFICATIONS, ...(input ?? {}) };
 }
 
+function normalizeOrbit(input: Partial<OrbitConfig> | undefined): OrbitConfig {
+  const time = typeof input?.time === 'string' && isValidOrbitTime(input.time)
+    ? input.time
+    : DEFAULT_ORBIT.time;
+  return { ...DEFAULT_ORBIT, ...(input ?? {}), time };
+}
+
+function isValidOrbitTime(time: string): boolean {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match) return false;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
+}
+
 function inferApiProtocol(model: string, baseUrl: string): ApiProtocol {
   try {
     return isOpenAICompatible(model, baseUrl) ? 'openai' : 'anthropic';
@@ -223,9 +250,17 @@ export function loadConfig(): AppConfig {
         ...DEFAULT_CONFIG,
         pet: normalizePet(DEFAULT_PET),
         notifications: normalizeNotifications(DEFAULT_NOTIFICATIONS),
+        orbit: normalizeOrbit(DEFAULT_ORBIT),
       };
     }
     const parsed = JSON.parse(raw) as Partial<AppConfig>;
+    // Strip daemon-owned privacy fields if a stale localStorage payload
+    // still carries them. Older builds wrote these to localStorage; we
+    // now treat the daemon as authoritative so the user can rotate /
+    // revoke without leaving residue in browser storage.
+    for (const key of DAEMON_OWNED_KEYS) {
+      delete (parsed as Record<string, unknown>)[key];
+    }
     const parsedHasApiProtocol = Object.prototype.hasOwnProperty.call(
       parsed,
       'apiProtocol',
@@ -241,6 +276,7 @@ export function loadConfig(): AppConfig {
       accentColor: normalizeAccentColor(parsed.accentColor) ?? DEFAULT_CONFIG.accentColor,
       pet: normalizePet(parsed.pet),
       notifications: normalizeNotifications(parsed.notifications),
+      orbit: normalizeOrbit(parsed.orbit),
     };
 
     if (parsed.configMigrationVersion !== CONFIG_MIGRATION_VERSION) {
@@ -268,6 +304,7 @@ export function loadConfig(): AppConfig {
       ...DEFAULT_CONFIG,
       pet: normalizePet(DEFAULT_PET),
       notifications: normalizeNotifications(DEFAULT_NOTIFICATIONS),
+      orbit: normalizeOrbit(DEFAULT_ORBIT),
     };
   }
 }
@@ -311,8 +348,23 @@ export async function syncComposioConfigToDaemon(
   }
 }
 
+// Privacy-sensitive fields the user can revoke. We deliberately keep
+// these out of localStorage so the daemon remains the single source of
+// truth: clearing app-config.json (or rotating via "Delete my data")
+// fully resets the install identity, with no residual cohort key
+// silently sitting in browser storage where the user can't see it.
+const DAEMON_OWNED_KEYS = new Set<keyof AppConfig>([
+  'installationId',
+  'telemetry',
+  'privacyDecisionAt',
+]);
+
 export function saveConfig(config: AppConfig): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  const sanitized: AppConfig = { ...config };
+  for (const key of DAEMON_OWNED_KEYS) {
+    delete (sanitized as unknown as Record<string, unknown>)[key];
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
 }
 
 export function mergeDaemonConfig(
@@ -347,6 +399,26 @@ export function mergeDaemonConfig(
   if (daemonConfig.disabledDesignSystems !== undefined) {
     next.disabledDesignSystems = daemonConfig.disabledDesignSystems;
   }
+  if (daemonConfig.orbit !== undefined) {
+    next.orbit = normalizeOrbit(daemonConfig.orbit);
+  }
+  if (daemonConfig.installationId !== undefined) {
+    next.installationId = daemonConfig.installationId;
+  }
+  if (daemonConfig.telemetry !== undefined) {
+    next.telemetry = { ...daemonConfig.telemetry };
+  }
+  if (daemonConfig.privacyDecisionAt !== undefined) {
+    next.privacyDecisionAt = daemonConfig.privacyDecisionAt;
+  } else if (
+    daemonConfig.installationId !== undefined ||
+    daemonConfig.telemetry !== undefined
+  ) {
+    // One-shot migration for configs created before privacyDecisionAt
+    // existed. If the daemon already has an id or telemetry prefs, the user
+    // has resolved the first-run prompt and should not see it again.
+    next.privacyDecisionAt = Date.now();
+  }
   return next;
 }
 
@@ -361,16 +433,18 @@ export function hasAnyConfiguredProvider(
 
 export async function syncMediaProvidersToDaemon(
   providers: Record<string, MediaProviderCredentials> | undefined,
-  options?: { force?: boolean },
+  options?: { force?: boolean; throwOnError?: boolean },
 ): Promise<void> {
   if (!providers) return;
   try {
-    await fetch('/api/media/config', {
+    const response = await fetch('/api/media/config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ providers, force: Boolean(options?.force) }),
     });
+    if (!response.ok) throw new Error(`Failed to sync media config (${response.status})`);
   } catch {
+    if (options?.throwOnError) throw new Error('Media config save failed');
     // Daemon offline; localStorage keeps the user's copy for the next save.
   }
 }
@@ -386,7 +460,10 @@ export async function fetchDaemonConfig(): Promise<AppConfigPrefs | null> {
   }
 }
 
-export async function syncConfigToDaemon(config: AppConfig): Promise<void> {
+export async function syncConfigToDaemon(
+  config: AppConfig,
+  options?: { throwOnError?: boolean },
+): Promise<void> {
   const prefs: AppConfigPrefs = {
     onboardingCompleted: config.onboardingCompleted,
     agentId: config.agentId,
@@ -396,14 +473,20 @@ export async function syncConfigToDaemon(config: AppConfig): Promise<void> {
     designSystemId: config.designSystemId,
     disabledSkills: config.disabledSkills,
     disabledDesignSystems: config.disabledDesignSystems,
+    orbit: normalizeOrbit(config.orbit),
+    installationId: config.installationId,
+    telemetry: config.telemetry,
+    privacyDecisionAt: config.privacyDecisionAt,
   };
   try {
-    await fetch('/api/app-config', {
+    const response = await fetch('/api/app-config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(prefs),
     });
-  } catch {
+    if (!response.ok) throw new Error(`Failed to sync app config (${response.status})`);
+  } catch (error) {
+    if (options?.throwOnError) throw error;
     // Daemon offline; localStorage keeps the user's copy for the next save.
   }
 }
