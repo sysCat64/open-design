@@ -558,10 +558,10 @@ Plus repo-wide gates
 
 | Field | Value |
 | --- | --- |
-| Current phase | Phase 2A + 1 + 1.5 + 2B + 2C entry slice + 3 (full) + 4 (full minus the live OD_BUNDLED_ATOM_PROMPTS rollout) + 5 (full minus the AWS SDK + postgres adapter wiring) + 6 (full incl. asset rasterisation) + 7 (all six atom impls) + 8 (full incl. GenUI \u2192 decision bridge) + scenarios bundle + bundled-scenario fallback resolver |
-| Next planned PR | (a) Promote OD_BUNDLED_ATOM_PROMPTS=1 to default once the bundled fragment library covers DISCOVERY_AND_PHILOSOPHY's responsibilities; (b) AWS SDK wiring inside S3ProjectStorage; (c) postgres adapter wiring inside the DaemonDb resolver. |
+| Current phase | Phase 2A + 1 + 1.5 + 2B + 2C entry slice + 3 (full) + 4 (full minus the live OD_BUNDLED_ATOM_PROMPTS rollout) + 5 (full incl. live S3 impl; postgres adapter still stubbed) + 6 (full incl. asset rasterisation) + 7 (all six atom impls) + 8 (full incl. GenUI \u2192 decision bridge) + scenarios bundle + bundled-scenario fallback resolver |
+| Next planned PR | (a) Promote OD_BUNDLED_ATOM_PROMPTS=1 to default once the bundled fragment library covers DISCOVERY_AND_PHILOSOPHY's responsibilities; (b) postgres adapter wiring inside the DaemonDb resolver (S3 wiring landed in §3.U1). |
 | Open spec push-backs | none — PB1 / PB2 resolved (see §7) |
-| Last sync against `docs/plugins-spec.md` | 2026-05-09 (runAndPersistHandoff() round-trip + auto-handoff from diff-review GenUI bridge + figma-migration pipeline e2e smoke landing) |
+| Last sync against `docs/plugins-spec.md` | 2026-05-09 (live S3ProjectStorage impl via AWS SigV4 landing) |
 
 Update this table on every plugin-system PR merge. When the value of "Current phase" advances, also flip the matching deliverables in §6 and the modules in §3.
 
