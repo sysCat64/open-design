@@ -10,6 +10,7 @@ export * from './atoms/diff-review.js';
 export * from './atoms/handoff.js';
 export * from './atoms/patch-edit.js';
 export * from './atoms/rewrite-plan.js';
+export * from './atoms/token-map.js';
 export * from './bundled.js';
 export * from './connector-gate.js';
 export * from './export.js';

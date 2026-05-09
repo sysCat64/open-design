@@ -46,10 +46,10 @@ import type { OwnershipEntry, RewriteStep } from './rewrite-plan.js';
 
 export type PatchStepStatus = 'pending' | 'completed' | 'skipped' | 'failed';
 
-export interface PatchStepRecord extends RewriteStep {
+export interface PatchStepRecord extends Omit<RewriteStep, 'rationale'> {
+  rationale?: string;
   status?: PatchStepStatus;
   completedAt?: string;
-  rationale?: string;
 }
 
 export interface PatchReceiptEntry {
@@ -160,7 +160,7 @@ export async function applyPatchForStep(input: ApplyPatchInput): Promise<ApplyPa
   // Mark the step completed in plan/steps.json + write a receipt.
   step.status = 'completed';
   step.completedAt = new Date().toISOString();
-  step.rationale = input.rationale ?? step.rationale;
+  if (input.rationale) step.rationale = input.rationale;
   await fsp.writeFile(stepsPath, JSON.stringify(steps, null, 2) + '\n', 'utf8');
   const receiptDir = path.join(cwd, 'plan', 'receipts');
   await fsp.mkdir(receiptDir, { recursive: true });
