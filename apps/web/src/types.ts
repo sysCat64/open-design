@@ -52,6 +52,10 @@ import type {
   SyncCommunityPetsResponse,
   SkillDetail,
   SkillSummary,
+  InstallInput,
+  InstallSkillResponse,
+  InstallDesignSystemResponse,
+  UninstallResponse,
   UpdateDeployConfigRequest,
 } from '@open-design/contracts';
 
@@ -434,6 +438,10 @@ export type {
   SyncCommunityPetsResponse,
   SkillDetail,
   SkillSummary,
+  InstallInput,
+  InstallSkillResponse,
+  InstallDesignSystemResponse,
+  UninstallResponse,
   UpdateDeployConfigRequest,
 };
 
