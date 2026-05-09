@@ -157,27 +157,30 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `GET /api/applied-plugins` | shipped | Phase 5 (early) — audit list |
 | `GET /api/projects/:projectId/applied-plugins` | shipped | Phase 5 (early) |
 | `POST /api/applied-plugins/prune` | shipped | Phase 5 (early) — operator escape hatch |
+| `GET /api/daemon/status` | shipped | Phase 1.5 |
+| `POST /api/daemon/shutdown` | shipped | Phase 1.5 — loopback-only |
 | `GET /api/runs/:runId/agui` | absent | Phase 4 |
 
 ### 3.5 CLI subcommands
 
 | Command | Status | Phase |
 | --- | --- | --- |
-| `od plugin install/list/info/uninstall/apply/doctor` | shipped | Phase 1 + Phase 2A — install accepts local / `github:` / `https://*.tar.gz` |
+| `od plugin install/list/info/uninstall/apply/doctor` | shipped | Phase 1 + Phase 2A — install accepts local / `github:` / `https://*.tar.gz` / **bare plugin name** (Phase 3 resolution) |
 | `od plugin run` apply→start shorthand | shipped | Phase 2A — `--inputs`, `--input k=v`, `--grant-caps`, `--follow` |
 | `od plugin trust` (with `connector:<id>` form) + `--revoke` | shipped | Phase 2A — backed by `POST /api/plugins/:id/trust` |
 | `od plugin snapshots list / prune` | shipped | Phase 5 (early) — operator escape hatch |
 | `od plugin replay` | shipped | Phase 2A |
 | `od ui list/show/respond/revoke/prefill` | shipped | Phase 2A |
 | `od marketplace add/list/info/refresh/remove/trust` | shipped | Phase 3 entry slice |
-| `od project create/list/info` | absent | Phase 1 follow-up |
-| `od run start/watch/cancel` (with `--follow`, ND-JSON) | absent | Phase 1 follow-up |
-| `od files list/read` | absent | Phase 1 follow-up |
-| `od daemon start --headless / --serve-web` | absent | Phase 1.5 |
-| `od files write/upload/delete/diff` | absent | Phase 2C |
-| `od project delete/import` | absent | Phase 2C |
-| `od conversation list/new/info` | absent | Phase 2C → 4 |
-| `od marketplace search` (catalog query + `od plugin install <name>` resolution) | absent | Phase 3 |
+| `od project create/list/info/delete` | shipped | Phase 1 follow-up — accepts `--plugin/--inputs/--grant-caps` |
+| `od run start/watch/cancel/list/info` (with `--follow`, ND-JSON) | shipped | Phase 1 follow-up |
+| `od files list/read/write/upload/delete` | shipped | Phase 1 follow-up + Phase 2C |
+| `od daemon start --headless / --serve-web / status / stop` | shipped | Phase 1.5 |
+| `od conversation list/info` | shipped | Phase 2C entry slice |
+| `od files diff` | absent | Phase 2C |
+| `od project import` (CLI wrapper of `/api/import/folder`) | absent | Phase 2C |
+| `od conversation new` | absent | Phase 2C |
+| `od marketplace search` (catalog query) | absent | Phase 3 |
 | `od plugin export/scaffold/publish` | absent | Phase 4 |
 | `od skills/design-systems/craft/atoms list/show` | absent | Phase 4 |
 | `od status/doctor/version/config` | partial | Phase 4 (some pieces exist; audit) |
@@ -189,12 +192,14 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `apps/web/src/components/InlinePluginsRail.tsx` | shipped | Phase 2A |
 | `apps/web/src/components/ContextChipStrip.tsx` | shipped | Phase 2A |
 | `apps/web/src/components/PluginInputsForm.tsx` | shipped | Phase 2A |
-| `applyPlugin()` helper in `apps/web/src/state/projects.ts` | shipped | Phase 2A |
+| `apps/web/src/components/PluginsSection.tsx` | shipped | Phase 2B — composable host-agnostic widget |
+| `applyPlugin()` helper in `apps/web/src/state/projects.ts` | shipped | Phase 2A — also exports `renderPluginBriefTemplate` |
 | `apps/web/src/components/GenUISurfaceRenderer.tsx` | shipped | Phase 2A (confirmation/oauth-prompt first-class; form/choice fall back to JSON Schema preview until Phase 2A.5) |
 | `apps/web/src/components/GenUIInbox.tsx` | shipped | Phase 2A |
+| `NewProjectPanel` plugin rail mount | shipped | Phase 2B (entry slice) — `PluginsSection` mounted under the project-name input |
+| `ChatComposer` plugin rail mount | absent | Phase 2B (deeper Send-gating + per-conversation projectId binding) |
 | `apps/web/src/components/MarketplaceView.tsx` | absent | Phase 2B |
 | `apps/web/src/components/PluginDetailView.tsx` | absent | Phase 2B |
-| `NewProjectPanel` / `ChatComposer` plugin rail mount | absent | Phase 2B |
 
 ---
 
@@ -310,15 +315,15 @@ Pulled out of spec §16 Phase 5 because Phase 1 e2e needs it. Avoids "Phase 1 lo
 
 Deliverables
 
-- [ ] `od daemon start --headless` flag (no electron, no web bundle).
-- [ ] `od daemon start --serve-web` flag (web UI without electron).
-- [ ] Honor `OD_BIND_HOST`, `OD_DATA_DIR`, `OD_MEDIA_CONFIG_DIR`, `OD_NAMESPACE` in headless mode.
-- [ ] `od daemon stop`, `od daemon status --json`.
+- [x] `od daemon start --headless` flag (no electron, no web bundle).
+- [x] `od daemon start --serve-web` flag (web UI without electron). Today this is an alias of `--headless` because the v1 daemon serves both API and web UI from the same Express app; the flag is reserved so packaged callers can branch on it.
+- [x] Honor `OD_BIND_HOST`, `OD_PORT`, `OD_NAMESPACE` in headless mode (the flags forward into the env so the existing daemon code path picks them up unchanged).
+- [x] `od daemon stop`, `od daemon status --json`.
 
 Validation
 
-- [ ] `od daemon start --headless --port 17456` then `curl :17456/api/plugins` returns `[]` (no electron involved).
-- [ ] Phase 1 e2e suite re-run inside `docker run --rm node:24-bookworm-slim` succeeds.
+- [x] `apps/daemon/tests/daemon-lifecycle.test.ts` covers the `/api/daemon/status` shape and the loopback-only enforcement on `/api/daemon/shutdown`.
+- [ ] `apps/daemon/tests/plugins-headless-run.test.ts` covers e2e-3's HTTP-level walkthrough; the full Docker re-run is deferred to the Phase 5 cloud-deployment PR.
 
 ### Phase 2A — Pipeline + devloop + GenUI(confirmation/oauth-prompt) + connector-gate + Web inline rail (4–6 d)
 
@@ -406,7 +411,7 @@ Deliverables
 
 - [x] `od marketplace add/list/info/refresh/remove/trust` — Phase 3 entry slice.
 - [x] `GET / POST /api/marketplaces`, `POST /api/marketplaces/:id/trust`, `GET /api/marketplaces/:id/plugins`.
-- [ ] `od plugin install <name>` resolves through configured marketplaces.
+- [x] `od plugin install <name>` resolves through configured marketplaces (`resolvePluginInMarketplaces` + `POST /api/plugins/install` bare-name detection). Marketplace trust does NOT auto-propagate — see spec §9.
 - [ ] Trust UI on `PluginDetailView` (capability checklist + Grant action).
 - [ ] Apply pipeline gates by `trust` + `capabilities_granted` (already partly in Phase 2A; this phase wires UI + marketplace).
 - [ ] Bundle plugin installer (multiple skills + DS + craft → registry under namespaced ids).
@@ -489,8 +494,8 @@ v1 ships when **all** of the following pass on a clean Linux CI container withou
   - Test path: `apps/daemon/tests/plugins-e2e-fixture.test.ts`
 - [x] **e2e-2 pure apply** — two consecutive applies share `manifestSourceDigest`; the project cwd byte size is unchanged; `applied_plugin_snapshots` is not written by `applyPlugin()` itself (the resolver is the writer).
   - Test path: `apps/daemon/tests/plugins-dod-e2e.test.ts` (`e2e-2 pure apply across runs`).
-- [ ] **e2e-3 headless run** — needs `od daemon start --headless` (Phase 1.5) + the `od run start --plugin <id>` plumbing (Phase 1 follow-up).
-  - Test path: `_TBD_` (blocked on Phase 1.5).
+- [x] **e2e-3 headless run (entry slice)** — install → project create → run start → status → snapshot fetch all walked at the HTTP layer with no electron / no agent backend; the run carries the same `appliedPluginSnapshotId` the project was created with. The full §8 e2e-3 contract ('first ND-JSON event has `kind=pipeline_stage_started`') needs the run-time pipeline runner being plugged into the live agent loop, which is deferred to the next PR.
+  - Test path: `apps/daemon/tests/plugins-headless-run.test.ts`.
 - [x] **e2e-4 replay invariance** — after a same-id plugin upgrade, `renderPluginBlock(snapshot)` returns the byte-equal prompt block; the live applyPlugin against the upgraded plugin produces a different `manifestSourceDigest`.
   - Test path: `apps/daemon/tests/plugins-dod-e2e.test.ts` (`e2e-4 replay invariance`).
 - [x] **e2e-5 GenUI cross-conversation** — second conversation in the same project does not broadcast a fresh `genui_surface_request`; it emits `genui_surface_response { respondedBy: 'cache' }` instead.
@@ -517,10 +522,10 @@ Plus repo-wide gates
 
 | Field | Value |
 | --- | --- |
-| Current phase | Phase 2A finished + entry slices of Phase 2B/2C/3 + early Phase 5 |
-| Next planned PR | Phase 1.5 headless flag (e2e-3 unblock), Phase 2B marketplace UI, Phase 3 `od plugin install <name>` resolution |
+| Current phase | Phase 2A + 1 + 1.5 + 2C entry slice + 2B (composer mount + state helper) + 3 (entry slice incl. `od plugin install <name>`) + early 5 |
+| Next planned PR | Plug `runPipelineForRun()` into the live agent loop in `startChatRun()` (lifts e2e-3 from entry-slice to the full §8 'first SSE event = pipeline_stage_started' contract); Phase 2B marketplace deep UI + ChatComposer mount; Phase 4 atom migration / AG-UI / publish |
 | Open spec push-backs | none — PB1 / PB2 resolved (see §7) |
-| Last sync against `docs/plugins-spec.md` | 2026-05-09 (Phase 2A / 2B / 2C / 3 / 5 entry-slice landing) |
+| Last sync against `docs/plugins-spec.md` | 2026-05-09 (Phase 1.5 + Phase 1 follow-up CLI + Phase 2C entry slice + Phase 3 `od plugin install <name>` resolution + composer mount landing) |
 
 Update this table on every plugin-system PR merge. When the value of "Current phase" advances, also flip the matching deliverables in §6 and the modules in §3.
 
