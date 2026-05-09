@@ -1,0 +1,43 @@
+import { z } from 'zod';
+
+// `open-design-marketplace.json` schema (v1). Mirrors
+// `docs/schemas/open-design.marketplace.v1.json`. The federated catalog
+// format is intentionally permissive — community catalogs can carry extra
+// fields (e.g. clawhub category tags) without breaking OD installs.
+export const MarketplacePluginEntrySchema = z.object({
+  name:        z.string().min(1),
+  source:      z.string().min(1),
+  version:     z.string().optional(),
+  ref:         z.string().optional(),
+  tags:        z.array(z.string()).optional(),
+  title:       z.string().optional(),
+  description: z.string().optional(),
+  icon:        z.string().optional(),
+}).passthrough();
+
+export type MarketplacePluginEntry = z.infer<typeof MarketplacePluginEntrySchema>;
+
+export const MarketplaceManifestSchema = z.object({
+  $schema:  z.string().optional(),
+  name:     z.string().min(1),
+  owner: z.object({
+    name: z.string().optional(),
+    url:  z.string().optional(),
+  }).passthrough().optional(),
+  metadata: z.object({
+    description: z.string().optional(),
+    version:     z.string().optional(),
+  }).passthrough().optional(),
+  plugins: z.array(MarketplacePluginEntrySchema),
+}).passthrough();
+
+export type MarketplaceManifest = z.infer<typeof MarketplaceManifestSchema>;
+
+// Trust levels for both individual plugins and entire marketplace indexes.
+// Spec §6: bundled / official-marketplace start trusted; everything else
+// starts restricted unless an operator explicitly elevates it.
+export const TrustTierSchema = z.enum(['bundled', 'trusted', 'restricted']);
+export type TrustTier = z.infer<typeof TrustTierSchema>;
+
+export const MarketplaceTrustSchema = z.enum(['official', 'trusted', 'untrusted']);
+export type MarketplaceTrust = z.infer<typeof MarketplaceTrustSchema>;

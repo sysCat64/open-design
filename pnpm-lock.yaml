@@ -35,6 +35,9 @@ importers:
       '@open-design/platform':
         specifier: workspace:*
         version: link:../../packages/platform
+      '@open-design/plugin-runtime':
+        specifier: workspace:*
+        version: link:../../packages/plugin-runtime
       '@open-design/sidecar':
         specifier: workspace:*
         version: link:../../packages/sidecar
@@ -275,6 +278,28 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@24.12.2)(jsdom@29.1.1)
+
+  packages/plugin-runtime:
+    dependencies:
+      '@open-design/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.10
+        version: 20.19.39
+      esbuild:
+        specifier: 0.27.7
+        version: 0.27.7
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.39)(jsdom@29.1.1)
 
   packages/sidecar:
     devDependencies:

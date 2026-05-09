@@ -37,6 +37,19 @@ import { buildWindowsFolderDialogCommand, parseFolderDialogStdout } from './nati
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import { syncCommunityPets } from './community-pets-sync.js';
 import { listDesignSystems, readDesignSystem } from './design-systems.js';
+import {
+  applyPlugin,
+  defaultRegistryRoots,
+  doctorPlugin,
+  FIRST_PARTY_ATOMS,
+  getInstalledPlugin,
+  getSnapshot,
+  installFromLocalFolder,
+  listInstalledPlugins,
+  MissingInputError,
+  pluginPromptBlock,
+  uninstallPlugin,
+} from './plugins/index.js';
 import { attachAcpSession } from './acp.js';
 import { attachPiRpcSession } from './pi-rpc.js';
 import { createClaudeStreamHandler } from './claude-stream.js';
@@ -3110,6 +3123,140 @@ export async function startServer({
       if (body === null)
         return res.status(404).json({ error: 'design system not found' });
       res.json({ id: req.params.id, body });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Plugin-system HTTP surface. Spec §11.5. Phase 1 wires the minimum set
+  // needed for the §12.5 walkthrough: list/get installed plugins, install
+  // (SSE), uninstall, apply (returns ApplyResult + snapshotId), atom catalog,
+  // and snapshot fetch by id (used by run replay tooling).
+  app.get('/api/plugins', async (_req, res) => {
+    try {
+      const plugins = listInstalledPlugins(db);
+      res.json({ plugins });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/plugins/:id', async (req, res) => {
+    try {
+      const plugin = getInstalledPlugin(db, req.params.id);
+      if (!plugin) return res.status(404).json({ error: 'plugin not found' });
+      res.json(plugin);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/plugins/install', async (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const source = typeof body.source === 'string' ? body.source : '';
+    if (!source) {
+      return res.status(400).json({ error: 'source is required' });
+    }
+    // Phase 1 only supports local folder installs. Phase 2A adds github + url.
+    if (!source.startsWith('/') && !source.startsWith('./') && !source.startsWith('~')) {
+      return res.status(400).json({ error: `Unsupported install source '${source}'. Phase 1 supports local-folder paths only.` });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const writeEvent = (event: string, data: unknown) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      for await (const ev of installFromLocalFolder(db, { source })) {
+        writeEvent(ev.kind, ev);
+        if (ev.kind === 'success' || ev.kind === 'error') break;
+      }
+    } catch (err) {
+      writeEvent('error', { kind: 'error', message: String(err), warnings: [] });
+    } finally {
+      res.end();
+    }
+  });
+
+  app.post('/api/plugins/:id/uninstall', async (req, res) => {
+    try {
+      const result = await uninstallPlugin(db, req.params.id, defaultRegistryRoots());
+      if (!result.ok && !result.removedFolder) {
+        return res.status(404).json({ error: 'plugin not found', warning: result.warning });
+      }
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/plugins/:id/apply', async (req, res) => {
+    try {
+      const plugin = getInstalledPlugin(db, req.params.id);
+      if (!plugin) return res.status(404).json({ error: 'plugin not found' });
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const inputs = body.inputs && typeof body.inputs === 'object' ? body.inputs : {};
+
+      // Resolve the live registry view once per request. Phase 1 does not yet
+      // surface project-scoped registries; we just feed the daemon-wide
+      // catalogs.
+      const [skills, designSystems] = await Promise.all([
+        listSkills(SKILLS_DIR),
+        listDesignSystems(DESIGN_SYSTEMS_DIR),
+      ]);
+      const computed = applyPlugin({
+        plugin,
+        inputs,
+        registry: {
+          skills: skills.map((s) => ({ id: s.id, title: s.name, description: s.description })),
+          designSystems: designSystems.map((d) => ({ id: d.id, title: d.title })),
+          craft: [],
+          atoms: FIRST_PARTY_ATOMS.map((a) => ({ id: a.id, label: a.label })),
+        },
+      });
+      res.json({ ok: true, ...computed.result, warnings: computed.warnings, manifestSourceDigest: computed.manifestSourceDigest });
+    } catch (err) {
+      if (err instanceof MissingInputError) {
+        return res.status(422).json({ error: 'missing_inputs', fields: err.fields });
+      }
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/plugins/:id/doctor', async (req, res) => {
+    try {
+      const plugin = getInstalledPlugin(db, req.params.id);
+      if (!plugin) return res.status(404).json({ error: 'plugin not found' });
+      const [skills, designSystems] = await Promise.all([
+        listSkills(SKILLS_DIR),
+        listDesignSystems(DESIGN_SYSTEMS_DIR),
+      ]);
+      const report = doctorPlugin(plugin, {
+        skills: skills.map((s) => ({ id: s.id, title: s.name, description: s.description })),
+        designSystems: designSystems.map((d) => ({ id: d.id, title: d.title })),
+        craft: [],
+        atoms: FIRST_PARTY_ATOMS.map((a) => ({ id: a.id, label: a.label })),
+      });
+      res.json(report);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/atoms', (_req, res) => {
+    res.json({ atoms: FIRST_PARTY_ATOMS.map((a) => ({ ...a, taskKinds: a.taskKinds.slice() })) });
+  });
+
+  app.get('/api/applied-plugins/:snapshotId', (req, res) => {
+    try {
+      const snap = getSnapshot(db, req.params.snapshotId);
+      if (!snap) return res.status(404).json({ error: 'snapshot not found' });
+      res.json(snap);
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }

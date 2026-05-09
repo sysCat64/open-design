@@ -69,10 +69,23 @@ const RESEARCH_SEARCH_BOOLEAN_FLAGS = new Set([
   'h',
 ]);
 
+const PLUGIN_STRING_FLAGS = new Set([
+  'daemon-url',
+  'source',
+  'inputs',
+  'project',
+]);
+const PLUGIN_BOOLEAN_FLAGS = new Set([
+  'help',
+  'h',
+  'json',
+]);
+
 const SUBCOMMAND_MAP = {
   media: runMedia,
   mcp: runMcp,
   research: runResearch,
+  plugin: runPlugin,
 };
 
 if (argv[0] === 'mcp' && argv[1] === 'live-artifacts') {
@@ -199,6 +212,9 @@ function printRootHelp() {
 
   od research search --query <text> [--max-sources 5] [--daemon-url <url>]
       Run agent-callable Tavily research through the local daemon.
+
+  od plugin <list|info|install|uninstall|apply|doctor> [args]
+      Discover, install, and apply plugins through the local daemon.
 
   "$OD_NODE_BIN" "$OD_BIN" tools ...
       Recommended agent-runtime form; avoids relying on user PATH for od or node.
@@ -701,4 +717,234 @@ For the copy-paste, per-client snippet (with absolute paths resolved
 for your machine, plus a one-click deeplink for Cursor), open Settings
 → MCP server in the Open Design app. Read-only by design; the daemon
 must be running locally for tool calls to succeed.`);
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: od plugin …
+// ---------------------------------------------------------------------------
+
+async function runPlugin(args) {
+  if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    printPluginHelp();
+    process.exit(args.length === 0 ? 2 : 0);
+  }
+  const sub = args[0];
+  const rest = args.slice(1);
+  switch (sub) {
+    case 'list':      return runPluginList(rest);
+    case 'info':      return runPluginInfo(rest);
+    case 'install':   return runPluginInstall(rest);
+    case 'uninstall': return runPluginUninstall(rest);
+    case 'apply':     return runPluginApply(rest);
+    case 'doctor':    return runPluginDoctor(rest);
+    default:
+      console.error(`unknown subcommand: od plugin ${sub}`);
+      printPluginHelp();
+      process.exit(2);
+  }
+}
+
+function pluginDaemonUrl(flags) {
+  return (flags && flags['daemon-url']) || process.env.OD_DAEMON_URL || 'http://127.0.0.1:7456';
+}
+
+async function runPluginList(rest) {
+  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const url = `${pluginDaemonUrl(flags).replace(/\/$/, '')}/api/plugins`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    console.error(`GET /api/plugins failed: ${resp.status} ${await resp.text()}`);
+    process.exit(1);
+  }
+  const data = await resp.json();
+  if (flags.json) {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    return;
+  }
+  const plugins = Array.isArray(data?.plugins) ? data.plugins : [];
+  if (plugins.length === 0) {
+    console.log('No plugins installed. Run `od plugin install --source <path>` to install one.');
+    return;
+  }
+  for (const p of plugins) {
+    console.log(`${p.id}@${p.version}  trust=${p.trust}  source=${p.sourceKind}  title="${p.title}"`);
+  }
+}
+
+async function runPluginInfo(rest) {
+  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const id = rest.find((a) => !a.startsWith('--') && a !== flags['daemon-url'] && a !== flags.source);
+  if (!id) {
+    console.error('Usage: od plugin info <id>');
+    process.exit(2);
+  }
+  const url = `${pluginDaemonUrl(flags).replace(/\/$/, '')}/api/plugins/${encodeURIComponent(id)}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    console.error(`GET /api/plugins/${id} failed: ${resp.status} ${await resp.text()}`);
+    process.exit(1);
+  }
+  const data = await resp.json();
+  process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+}
+
+async function runPluginInstall(rest) {
+  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const source = typeof flags.source === 'string' ? flags.source : rest.find((a) => !a.startsWith('-'));
+  if (!source) {
+    console.error('Usage: od plugin install --source <path>');
+    process.exit(2);
+  }
+  const url = `${pluginDaemonUrl(flags).replace(/\/$/, '')}/api/plugins/install`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+    body: JSON.stringify({ source }),
+  });
+  if (!resp.ok || !resp.body) {
+    console.error(`POST /api/plugins/install failed: ${resp.status} ${await resp.text()}`);
+    process.exit(1);
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let exitCode = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split('\n\n');
+    buffer = blocks.pop() ?? '';
+    for (const block of blocks) {
+      const lines = block.split('\n');
+      const eventLine = lines.find((l) => l.startsWith('event: '));
+      const dataLine  = lines.find((l) => l.startsWith('data: '));
+      const event = eventLine ? eventLine.slice('event: '.length) : 'message';
+      const data = dataLine ? safeParseJson(dataLine.slice('data: '.length)) : null;
+      if (event === 'progress') {
+        console.log(`[install] ${data?.phase ?? '...'}: ${data?.message ?? ''}`);
+      } else if (event === 'success') {
+        console.log(`[install] ok — ${data?.plugin?.id}@${data?.plugin?.version} (trust=${data?.plugin?.trust})`);
+        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+          for (const w of data.warnings) console.log(`[install] warn: ${w}`);
+        }
+      } else if (event === 'error') {
+        console.error(`[install] error: ${data?.message ?? 'unknown'}`);
+        exitCode = 1;
+      }
+    }
+  }
+  process.exit(exitCode);
+}
+
+async function runPluginUninstall(rest) {
+  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const id = rest.find((a) => !a.startsWith('-') && a !== flags['daemon-url'] && a !== flags.source);
+  if (!id) {
+    console.error('Usage: od plugin uninstall <id>');
+    process.exit(2);
+  }
+  const url = `${pluginDaemonUrl(flags).replace(/\/$/, '')}/api/plugins/${encodeURIComponent(id)}/uninstall`;
+  const resp = await fetch(url, { method: 'POST' });
+  if (!resp.ok) {
+    console.error(`POST /api/plugins/${id}/uninstall failed: ${resp.status} ${await resp.text()}`);
+    process.exit(1);
+  }
+  const data = await resp.json();
+  console.log(`[uninstall] ${data?.removedFolder ? 'ok' : 'no-op'}${data?.warning ? ` (warning: ${data.warning})` : ''}`);
+}
+
+async function runPluginApply(rest) {
+  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const id = rest.find((a) => !a.startsWith('-') && a !== flags['daemon-url'] && a !== flags.source && a !== flags.inputs && a !== flags.project);
+  if (!id) {
+    console.error('Usage: od plugin apply <id> [--inputs <json>] [--project <id>]');
+    process.exit(2);
+  }
+  let inputs = {};
+  if (typeof flags.inputs === 'string' && flags.inputs.trim().length > 0) {
+    try { inputs = JSON.parse(flags.inputs); } catch (err) {
+      console.error(`--inputs must be valid JSON: ${err.message}`);
+      process.exit(2);
+    }
+  }
+  const url = `${pluginDaemonUrl(flags).replace(/\/$/, '')}/api/plugins/${encodeURIComponent(id)}/apply`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ inputs, projectId: flags.project }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    if (resp.status === 422 && data?.fields) {
+      console.error(`[apply] missing inputs: ${data.fields.join(', ')}`);
+    } else {
+      console.error(`POST /api/plugins/${id}/apply failed: ${resp.status} ${JSON.stringify(data)}`);
+    }
+    process.exit(1);
+  }
+  if (flags.json) {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    return;
+  }
+  const snap = data?.appliedPlugin;
+  if (snap) {
+    console.log(`[apply] ${snap.pluginId}@${snap.pluginVersion} digest=${snap.manifestSourceDigest.slice(0, 12)}…`);
+    console.log(`[apply] context: ${(data.contextItems ?? []).map((c) => `${c.kind}:${c.id ?? c.name ?? c.path}`).join(', ')}`);
+    if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+      for (const w of data.warnings) console.log(`[apply] warn: ${w}`);
+    }
+  } else {
+    console.log(JSON.stringify(data));
+  }
+}
+
+async function runPluginDoctor(rest) {
+  const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
+  const id = rest.find((a) => !a.startsWith('-') && a !== flags['daemon-url'] && a !== flags.source);
+  if (!id) {
+    console.error('Usage: od plugin doctor <id>');
+    process.exit(2);
+  }
+  const url = `${pluginDaemonUrl(flags).replace(/\/$/, '')}/api/plugins/${encodeURIComponent(id)}/doctor`;
+  const resp = await fetch(url, { method: 'POST' });
+  if (!resp.ok) {
+    console.error(`POST /api/plugins/${id}/doctor failed: ${resp.status} ${await resp.text()}`);
+    process.exit(1);
+  }
+  const data = await resp.json();
+  if (flags.json) {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+  } else {
+    if (data.ok && (data.issues ?? []).length === 0) {
+      console.log(`[doctor] ${data.pluginId} ok (digest ${data.freshDigest.slice(0, 12)}…)`);
+    } else {
+      console.log(`[doctor] ${data.pluginId} ${data.ok ? 'warnings' : 'errors'}:`);
+      for (const issue of data.issues ?? []) {
+        console.log(`  [${issue.severity}] ${issue.code}: ${issue.message}`);
+      }
+    }
+  }
+  process.exit(data.ok ? 0 : 1);
+}
+
+function safeParseJson(s) {
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+function printPluginHelp() {
+  console.log(`Usage:
+  od plugin list                          List installed plugins.
+  od plugin info <id>                     Print a plugin's manifest + trust state as JSON.
+  od plugin install --source <path>       Install a plugin from a local folder (Phase 1).
+  od plugin uninstall <id>                Remove a plugin from the registry + on-disk staging.
+  od plugin apply <id> [--inputs <json>]  Compute an ApplyResult (preview) for a plugin.
+  od plugin doctor <id>                   Lint a plugin's manifest, atoms and resolved refs.
+
+Common options:
+  --daemon-url <url>   Open Design daemon HTTP base (default OD_DAEMON_URL or http://127.0.0.1:7456).
+  --json               Emit raw JSON (suitable for scripts) instead of human-readable output.
+
+Phase 1 only supports local-folder installs. The github / https tarball
+sources arrive in Phase 2A. The marketplace surface comes in Phase 4.`);
 }

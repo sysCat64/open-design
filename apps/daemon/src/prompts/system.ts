@@ -130,6 +130,12 @@ export interface ComposeInput {
   // confuses the user.
   connectedExternalMcp?: ReadonlyArray<{ id: string; label?: string | undefined }>
     | undefined;
+  // Optional `## Active plugin` / `## Plugin inputs` block. The daemon's
+  // plugin module renders this from an AppliedPluginSnapshot; we splice
+  // it in after the active skill so the plugin description sits next to
+  // its companion skill body in the prompt. Pass undefined when no
+  // plugin is bound to the run.
+  pluginBlock?: string | undefined;
 }
 
 export function composeSystemPrompt({
@@ -148,6 +154,7 @@ export function composeSystemPrompt({
   critiqueBrand,
   critiqueSkill,
   connectedExternalMcp,
+  pluginBlock,
 }: ComposeInput): string {
   // Discovery + philosophy goes FIRST so its hard rules ("emit a form on
   // turn 1", "branch on brand on turn 2", "TodoWrite on turn 3", run
@@ -180,6 +187,10 @@ export function composeSystemPrompt({
     parts.push(
       `\n\n## Active skill${skillName ? ` — ${skillName}` : ''}\n\nFollow this skill's workflow exactly.${preflight}\n\n${skillBody.trim()}`,
     );
+  }
+
+  if (pluginBlock && pluginBlock.trim().length > 0) {
+    parts.push(pluginBlock);
   }
 
   const metaBlock = renderMetadataBlock(metadata, template);

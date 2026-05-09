@@ -38,6 +38,7 @@ const residualAllowedExactPaths = new Set([
   // dist output exists.
   "packages/contracts/esbuild.config.mjs",
   "packages/platform/esbuild.config.mjs",
+  "packages/plugin-runtime/esbuild.config.mjs",
   "packages/sidecar/esbuild.config.mjs",
   "packages/sidecar-proto/esbuild.config.mjs",
   // Maintainer utility scripts ported from the media branch. They are
