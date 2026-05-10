@@ -689,6 +689,7 @@ export function ProjectView({
       designSystemTitle,
       metadata: project.metadata,
       template,
+      streamFormat: config.mode === 'api' ? 'plain' : undefined,
     });
   }, [
     project.skillId,
@@ -696,6 +697,7 @@ export function ProjectView({
     project.metadata,
     skills,
     designSystems,
+    config.mode,
   ]);
 
   const persistMessage = useCallback(

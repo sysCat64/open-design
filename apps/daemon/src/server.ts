@@ -5921,6 +5921,7 @@ export async function startServer({
     const prompt = composeSystemPrompt({
       agentId,
       includeCodexImagegenOverride: false,
+      streamFormat,
       skillBody,
       skillName,
       skillMode,
