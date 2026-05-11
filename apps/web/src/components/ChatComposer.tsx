@@ -68,6 +68,12 @@ interface Props {
   researchAvailable?: boolean;
   projectMetadata?: ProjectMetadata;
   onProjectMetadataChange?: (metadata: ProjectMetadata) => void;
+  // Set when the project was created with a plugin already pinned
+  // (PluginLoopHome on Home). We suppress the in-composer plugin rail
+  // so the user is not re-prompted to pick a plugin they already chose;
+  // the active plugin shows up as a context chip on each user message
+  // (see UserMessage in ChatPane).
+  hidePluginsRail?: boolean;
 }
 
 // Imperative handle so ancestors (e.g. example chips in ChatPane) can
@@ -111,6 +117,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       researchAvailable = false,
       projectMetadata,
       onProjectMetadataChange,
+      hidePluginsRail = false,
     },
     ref
   ) {
@@ -696,8 +703,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             applying a plugin hydrates the draft with the rendered
             brief, leaving the existing send / @-mention / staged
             attachment flows untouched.
+
+            Hidden when the project was created with a plugin pinned
+            (PluginLoopHome on Home): re-rendering the rail there would
+            re-prompt the user to pick a plugin they already chose. The
+            active plugin appears as a context chip on user messages
+            (UserMessage in ChatPane) instead.
           */}
-          {projectId ? (
+          {projectId && !hidePluginsRail ? (
             <PluginsSection
               projectId={projectId}
               variant="strip"

@@ -6,6 +6,7 @@
 // the UI can stay rendered when the daemon is briefly unreachable.
 
 import type {
+  AppliedPluginSnapshot,
   ApplyResult,
   ImportFolderRequest,
   ImportFolderResponse,
@@ -388,6 +389,24 @@ export async function applyPlugin(
     if (!resp.ok) return null;
     const json = (await resp.json()) as ApplyResult & { ok?: boolean };
     return json;
+  } catch {
+    return null;
+  }
+}
+
+// Fetch the immutable snapshot pinned to a project / conversation.
+// Used by ProjectView to surface the active plugin as a context chip
+// on user messages instead of re-rendering the inline plugin rail
+// (the user already picked a plugin on Home — re-prompting is noise).
+export async function fetchAppliedPluginSnapshot(
+  snapshotId: string,
+): Promise<AppliedPluginSnapshot | null> {
+  try {
+    const resp = await fetch(
+      `/api/applied-plugins/${encodeURIComponent(snapshotId)}`,
+    );
+    if (!resp.ok) return null;
+    return (await resp.json()) as AppliedPluginSnapshot;
   } catch {
     return null;
   }

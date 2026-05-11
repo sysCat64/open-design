@@ -98,6 +98,12 @@ export interface Project {
   status?: ProjectStatusInfo;
   pendingPrompt?: string;
   metadata?: ProjectMetadata;
+  // Plan §3.A1 / spec §11.5 — set when the project was created with a
+  // plugin pinned (e.g. via PluginLoopHome on the web entry). Lets the
+  // UI hide the in-composer plugin rail and render the active plugin
+  // as context on user messages instead of re-prompting the user to
+  // pick a plugin they already selected.
+  appliedPluginSnapshotId?: string;
 }
 
 export interface ProjectTemplate {

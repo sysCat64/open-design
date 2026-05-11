@@ -3,6 +3,7 @@ import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
 import { projectRawUrl } from '../providers/registry';
 import type { TodoItem } from '../runtime/todos';
+import type { AppliedPluginSnapshot } from '@open-design/contracts';
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, ChatMessage, Conversation, PreviewComment, ProjectFile, ProjectMetadata } from '../types';
 import { dayKey, dayLabel, exactDateTime, messageTime, relativeTimeLong } from '../utils/chatTime';
 import { commentsToAttachments, simplePositionLabel } from '../comments';
@@ -98,6 +99,12 @@ interface Props {
   projectMetadata?: ProjectMetadata;
   onProjectMetadataChange?: (metadata: ProjectMetadata) => void;
   researchAvailable?: boolean;
+  // Immutable snapshot of the plugin pinned to this project. When set
+  // we suppress the in-composer plugin rail (the user already picked a
+  // plugin on Home) and render the active plugin as a context chip on
+  // each user message — that satisfies §8 "show context inside the run
+  // message" without forcing a separate side widget.
+  activePluginSnapshot?: AppliedPluginSnapshot | null;
 }
 
 type Tab = 'chat' | 'comments';
@@ -136,6 +143,7 @@ export function ChatPane({
   projectMetadata,
   onProjectMetadataChange,
   researchAvailable,
+  activePluginSnapshot,
 }: Props) {
   const t = useT();
   const logRef = useRef<HTMLDivElement | null>(null);
@@ -149,6 +157,10 @@ export function ChatPane({
   const hasActiveRunMessage = messages.some(
     (m) => m.role === 'assistant' && isActiveRunStatus(m.runStatus),
   );
+  // Only the first user message gets the active-plugin chip — the
+  // plugin is project-scoped so re-stamping it on every reply would be
+  // noise. Subsequent messages still run under the same snapshot.
+  const firstUserMessageId = messages.find((m) => m.role === 'user')?.id;
   // Map each assistant message id to the user message that follows it
   // (if any) so QuestionFormView can render its locked "answered" state
   // with the user's picks.
@@ -463,6 +475,11 @@ export function ChatPane({
                         projectFileNames={projectFileNames}
                         onRequestOpenFile={onRequestOpenFile}
                         t={t}
+                        activePluginSnapshot={
+                          m.id === firstUserMessageId
+                            ? activePluginSnapshot ?? null
+                            : null
+                        }
                       />
                     ) : (
                       <AssistantMessage
@@ -518,6 +535,7 @@ export function ChatPane({
             researchAvailable={researchAvailable}
             projectMetadata={projectMetadata}
             onProjectMetadataChange={onProjectMetadataChange}
+            hidePluginsRail={!!activePluginSnapshot}
           />
         </>
       ) : null}
@@ -739,12 +757,14 @@ function UserMessage({
   projectFileNames,
   onRequestOpenFile,
   t,
+  activePluginSnapshot,
 }: {
   message: ChatMessage;
   projectId: string | null;
   projectFileNames?: Set<string>;
   onRequestOpenFile?: (name: string) => void;
   t: TranslateFn;
+  activePluginSnapshot?: AppliedPluginSnapshot | null;
 }) {
   const attachments = message.attachments ?? [];
   const commentAttachments = message.commentAttachments ?? [];
@@ -754,6 +774,9 @@ function UserMessage({
         <span>{t('chat.you')}</span>
         <MessageTimestamp message={message} t={t} />
       </div>
+      {activePluginSnapshot ? (
+        <ActivePluginChip snapshot={activePluginSnapshot} t={t} />
+      ) : null}
       {attachments.length > 0 ? (
         <div className="user-attachments">
           {attachments.map((a) => {
@@ -797,6 +820,36 @@ function UserMessage({
         </div>
       ) : null}
       {message.content ? <div className="user-text">{message.content}</div> : null}
+    </div>
+  );
+}
+
+// Context chip rendered above a user message when the project pinned a
+// plugin at create time (PluginLoopHome on Home). Replaces the noisy
+// in-composer plugin rail so the user is not re-prompted to pick
+// something they already chose; instead the active plugin lives inside
+// the run message it kicked off.
+function ActivePluginChip({
+  snapshot,
+  t: _t,
+}: {
+  snapshot: AppliedPluginSnapshot;
+  t: TranslateFn;
+}) {
+  const title = snapshot.pluginTitle ?? snapshot.pluginId;
+  const version = snapshot.pluginVersion;
+  const taskKind = snapshot.taskKind;
+  return (
+    <div className="msg-plugin-chip" data-testid="msg-plugin-chip">
+      <span className="msg-plugin-chip__dot" aria-hidden />
+      <span className="msg-plugin-chip__label">
+        <span className="msg-plugin-chip__kind">Plugin</span>
+        <span className="msg-plugin-chip__title">{title}</span>
+        <span className="msg-plugin-chip__version">@{version}</span>
+      </span>
+      {taskKind ? (
+        <span className="msg-plugin-chip__task">{taskKind}</span>
+      ) : null}
     </div>
   );
 }

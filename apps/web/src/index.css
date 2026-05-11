@@ -754,6 +754,58 @@ code {
 }
 .msg.user .role::before { content: ''; }
 .msg.user .user-text { white-space: pre-wrap; color: var(--text); }
+.msg-plugin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  line-height: 1;
+  color: var(--text-muted);
+  max-width: 100%;
+}
+.msg-plugin-chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+.msg-plugin-chip__label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-plugin-chip__kind {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+.msg-plugin-chip__title {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-plugin-chip__version,
+.msg-plugin-chip__task {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.msg-plugin-chip__task {
+  border-left: 1px solid var(--border);
+  padding-left: 8px;
+}
 .msg.assistant .prose { margin-top: 4px; }
 .msg .artifact-badge {
   display: inline-block;

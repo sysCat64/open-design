@@ -173,4 +173,63 @@ describe('ProjectView daemon cleanup', () => {
     expect(resolveSucceededRunStatus('failed')).toBe('failed');
     expect(resolveSucceededRunStatus('canceled')).toBe('canceled');
   });
+
+  // Regression: a phantom 'running' row in DB (no runId, no matching active
+  // daemon run) used to stick the UI on "Waiting for first output —
+  // Working 24m+" forever. The reattach loop now self-heals by marking
+  // such a message as failed so the composer is interactive again.
+  it('self-heals running messages with no runId when daemon has no active run', async () => {
+    const startedAt = Date.now();
+    listConversations.mockResolvedValue([{ id: 'conv-1', title: 'Conversation' }]);
+    listMessages.mockResolvedValue([
+      {
+        id: 'msg-phantom',
+        role: 'assistant',
+        content: '',
+        createdAt: startedAt,
+        startedAt,
+        runStatus: 'running',
+      },
+    ]);
+    fetchPreviewComments.mockResolvedValue([]);
+    loadTabs.mockResolvedValue({ tabs: [], activeTabId: null });
+    fetchProjectFiles.mockResolvedValue([]);
+    fetchLiveArtifacts.mockResolvedValue([]);
+    fetchSkill.mockResolvedValue(null);
+    fetchDesignSystem.mockResolvedValue(null);
+    getTemplate.mockResolvedValue(null);
+    listActiveChatRuns.mockResolvedValue([]);
+
+    render(
+      <ProjectView
+        project={{ id: 'project-1', name: 'Project', skillId: null, designSystemId: null } as never}
+        routeFileName={null}
+        config={{ mode: 'daemon', agentId: 'agent-1', notifications: undefined, agentModels: {} } as never}
+        agents={[{ id: 'agent-1', name: 'OpenCode', models: [] } as never]}
+        skills={[]}
+        designSystems={[]}
+        daemonLive
+        onModeChange={() => {}}
+        onAgentChange={() => {}}
+        onAgentModelChange={() => {}}
+        onRefreshAgents={() => {}}
+        onOpenSettings={() => {}}
+        onBack={() => {}}
+        onClearPendingPrompt={() => {}}
+        onTouchProject={() => {}}
+        onProjectChange={() => {}}
+        onProjectsRefresh={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(listActiveChatRuns).toHaveBeenCalled());
+    await waitFor(() => {
+      const failedCall = saveMessage.mock.calls.find(
+        (call) =>
+          call[2]?.id === 'msg-phantom' && call[2]?.runStatus === 'failed',
+      );
+      expect(failedCall).toBeTruthy();
+    });
+    expect(reattachDaemonRun).not.toHaveBeenCalled();
+  });
 });

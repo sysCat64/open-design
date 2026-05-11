@@ -374,6 +374,7 @@ const PROJECT_COLS = `id, name, skill_id AS skillId,
   design_system_id AS designSystemId,
   pending_prompt AS pendingPrompt,
   metadata_json AS metadataJson,
+  applied_plugin_snapshot_id AS appliedPluginSnapshotId,
   created_at AS createdAt,
   updated_at AS updatedAt`;
 
@@ -523,6 +524,7 @@ function normalizeProject(row: DbRow) {
     designSystemId: row.designSystemId,
     pendingPrompt: row.pendingPrompt ?? undefined,
     metadata,
+    appliedPluginSnapshotId: row.appliedPluginSnapshotId ?? undefined,
     createdAt: Number(row.createdAt),
     updatedAt: Number(row.updatedAt),
   };

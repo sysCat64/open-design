@@ -46,6 +46,7 @@ import { isLiveArtifactTabId, liveArtifactTabId } from '../types';
 import {
   createConversation,
   deleteConversation as deleteConversationApi,
+  fetchAppliedPluginSnapshot,
   getTemplate,
   listConversations,
   listMessages,
@@ -55,6 +56,7 @@ import {
   saveMessage,
   saveTabs,
 } from '../state/projects';
+import type { AppliedPluginSnapshot } from '@open-design/contracts';
 import type {
   AgentEvent,
   AgentInfo,
@@ -795,7 +797,25 @@ export function ProjectView({
         if (!isActiveRunStatus(message.runStatus)) continue;
         const fallbackRun = !message.runId ? activeByMessage.get(message.id) : null;
         const runId = message.runId ?? fallbackRun?.id;
-        if (!runId) continue;
+        // Self-heal phantom 'running' rows: when the message has no runId
+        // and the daemon has no active run mapped to it, the original send
+        // POST was lost (daemon restart mid-flight, the user navigated
+        // away before /api/runs returned, or a network blip). Leaving the
+        // message as 'running' is what produces the "Waiting for first
+        // output — Working 24m+" UI the user reported. Mark it failed so
+        // the composer is interactive again and the user can re-send.
+        if (!runId) {
+          updateMessageById(
+            message.id,
+            (prev) => ({
+              ...prev,
+              runStatus: 'failed',
+              endedAt: prev.endedAt ?? Date.now(),
+            }),
+            true,
+          );
+          continue;
+        }
         if (reattachControllersRef.current.has(runId)) continue;
         if (completedReattachRunsRef.current.has(runId)) continue;
 
@@ -1762,6 +1782,30 @@ export function ProjectView({
       setInitialDraft(undefined);
     }
   }, [initialDraft, activeConversationId]);
+
+  // §8.4 — when the project was created with a plugin pinned (the
+  // PluginLoopHome → POST /api/projects path), fetch the immutable
+  // snapshot once so ChatPane can render the active plugin as a
+  // context chip on user messages instead of re-rendering the inline
+  // plugin rail. Re-fetches when the pinned id changes; cancelled if
+  // the project switches away mid-flight to avoid setState-on-unmount.
+  const [activePluginSnapshot, setActivePluginSnapshot] =
+    useState<AppliedPluginSnapshot | null>(null);
+  useEffect(() => {
+    const snapshotId = project.appliedPluginSnapshotId;
+    if (!snapshotId) {
+      setActivePluginSnapshot(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchAppliedPluginSnapshot(snapshotId).then((snap) => {
+      if (cancelled) return;
+      setActivePluginSnapshot(snap);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.appliedPluginSnapshotId]);
   useEffect(() => {
     if (project.pendingPrompt) onClearPendingPrompt();
   }, [project.pendingPrompt, onClearPendingPrompt]);
@@ -1905,6 +1949,7 @@ export function ProjectView({
               onProjectMetadataChange={(metadata) => {
                 onProjectChange({ ...project, metadata });
               }}
+              activePluginSnapshot={activePluginSnapshot}
             />
           ) : (
             <div className="pane" data-testid="chat-pane-loading">
