@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { createHtmlArtifactManifest, inferLegacyManifest } from '../artifacts/manifest';
+import { validateHtmlArtifact } from '../artifacts/validate';
 import { createArtifactParser } from '../artifacts/parser';
 import { useT } from '../i18n';
 import { streamMessage } from '../providers/anthropic';
@@ -341,7 +342,17 @@ export function ProjectView({
   // dropped), create one on the fly.
   useEffect(() => {
     let cancelled = false;
+    setConversations([]);
+    setActiveConversationId(null);
     setConversationLoadError(null);
+    setMessages([]);
+    setPreviewComments([]);
+    setAttachedComments([]);
+    setStreaming(false);
+    setError(null);
+    setArtifact(null);
+    savedArtifactRef.current = null;
+    pendingWritesRef.current.clear();
     (async () => {
       try {
         const list = await listConversations(project.id);
@@ -688,6 +699,7 @@ export function ProjectView({
       designSystemTitle,
       metadata: project.metadata,
       template,
+      streamFormat: config.mode === 'api' ? 'plain' : undefined,
     });
   }, [
     project.skillId,
@@ -695,6 +707,7 @@ export function ProjectView({
     project.metadata,
     skills,
     designSystems,
+    config.mode,
   ]);
 
   const persistMessage = useCallback(
@@ -1402,6 +1415,18 @@ export function ProjectView({
         .replace(/^-+|-+$/g, '')
         .slice(0, 60) || 'artifact';
       const ext = artifactExtensionFor(art);
+      // Pre-write structural gate for HTML artifacts (#50, #1143). Reject
+      // bodies that obviously aren't a complete document — usually a one-line
+      // prose summary the model emitted inside `<artifact type="text/html">`
+      // when only Edit-tool changes happened this turn. Without this guard,
+      // such content lands as a phantom HTML file in the project panel.
+      if (ext === '.html') {
+        const validation = validateHtmlArtifact(art.html);
+        if (!validation.ok) {
+          setError(`Refused to save artifact "${art.identifier || art.title || 'untitled'}": ${validation.reason}`);
+          return;
+        }
+      }
       // Pick a name that doesn't collide with an existing project file.
       // The first run uses `<base>.<ext>`; subsequent runs append `-2`, `-3`…
       // so prior artifacts aren't silently overwritten.
@@ -1811,25 +1836,29 @@ export function ProjectView({
     saveChatPanelWidth(next);
   }, [applyChatPanelWidth]);
 
-  // Hand the pending prompt to ChatPane exactly once. We snapshot the value
-  // into local state on mount so it survives the ChatPane remount triggered
-  // when `activeConversationId` resolves from `null` to a real id (the
-  // `key={activeConversationId}` on ChatPane otherwise wipes the freshly
-  // seeded composer draft). Once the conversation id is in place — meaning
-  // ChatPane has remounted with the seed still available — we clear both
-  // the local snapshot and the persisted pendingPrompt so future
-  // conversation switches don't keep re-seeding the composer.
-  const [initialDraft, setInitialDraft] = useState<string | undefined>(
-    project.pendingPrompt,
+  // Hand the pending prompt to ChatPane exactly once per project. The local
+  // project-scoped snapshot survives the conversation-id remount, while the
+  // persisted pendingPrompt is cleared so refreshes and later entries do not
+  // re-seed the composer.
+  const [initialDraft, setInitialDraft] = useState<
+    { projectId: string; value: string } | undefined
+  >(
+    project.pendingPrompt
+      ? { projectId: project.id, value: project.pendingPrompt }
+      : undefined,
   );
   useEffect(() => {
-    if (initialDraft && activeConversationId) {
-      setInitialDraft(undefined);
-    }
-  }, [initialDraft, activeConversationId]);
-  useEffect(() => {
-    if (project.pendingPrompt) onClearPendingPrompt();
-  }, [project.pendingPrompt, onClearPendingPrompt]);
+    const pendingPrompt = project.pendingPrompt;
+    if (!pendingPrompt) return;
+    setInitialDraft((current) =>
+      current?.projectId === project.id
+        ? current
+        : { projectId: project.id, value: pendingPrompt },
+    );
+    onClearPendingPrompt();
+  }, [project.id, project.pendingPrompt, onClearPendingPrompt]);
+  const chatInitialDraft =
+    initialDraft?.projectId === project.id ? initialDraft.value : undefined;
 
   // Continue in CLI / Finalize design package handlers + keyboard
   // shortcut wiring. Close to the JSX so the data flow is easy to
@@ -2008,7 +2037,7 @@ export function ProjectView({
             <ChatPane
               // The conversation id is part of the key so switching conversations
               // resets internal scroll/draft state inside ChatPane and ChatComposer.
-              key={activeConversationId ?? 'conversation-unavailable'}
+              key={`${project.id}:${activeConversationId ?? 'conversation-unavailable'}`}
               messages={messages}
               streaming={streaming}
               error={conversationLoadError ?? error}
@@ -2024,7 +2053,7 @@ export function ProjectView({
               onSend={handleSend}
               onStop={handleStop}
               onRequestOpenFile={requestOpenFile}
-              initialDraft={initialDraft}
+              initialDraft={chatInitialDraft}
               onSubmitForm={(text) => {
                 if (streaming) return;
                 void handleSend(text, [], []);
