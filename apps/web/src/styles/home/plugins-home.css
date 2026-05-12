@@ -104,6 +104,18 @@
   color: white;
 }
 
+/* "More" pill — toggles the overflow scenario tags into the pill row
+   inline. Styled to read as a meta control (dashed border, muted) so
+   it never competes with a real category for the user's attention. */
+.plugins-home__filter--more {
+  border-style: dashed;
+  color: var(--text-faint);
+}
+.plugins-home__filter--more:hover {
+  color: var(--text);
+  border-style: solid;
+}
+
 /* Card grid */
 .plugins-home__grid {
   display: grid;

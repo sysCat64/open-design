@@ -92,6 +92,12 @@ const residualAllowedPathPatterns: RegExp[] = [
   // these skill directories must still be converted to TypeScript or explicitly
   // listed in `residualAllowedExactPaths`.
   /^skills\/html-ppt-zhangzara-[^/]+\/assets\/deck-stage\.js$/,
+  // Bundled example/skill plugins copy the upstream skill's `assets/`
+  // and `references/` directories verbatim so the daemon's preview
+  // surface can render the baked HTML without staging detours. Those
+  // assets are vendored runtime, never project-owned code, and must
+  // not be retypecasted to TypeScript.
+  /^plugins\/_official\/examples\/[^/]+\/(assets|references)\/.+$/,
 ];
 
 function isResidualAllowedPath(repositoryPath: string): boolean {
