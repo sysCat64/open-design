@@ -10,6 +10,7 @@ import {
 } from '../state/projects';
 import { Icon } from './Icon';
 import { PluginDetailsModal } from './PluginDetailsModal';
+import { authorInitials, derivePluginSourceLinks } from '../runtime/plugin-source';
 
 export interface PluginLoopSubmit {
   prompt: string;
@@ -208,6 +209,7 @@ export function PluginLoopHome({ onSubmit }: Props) {
             const hasQuery = Boolean(p.manifest?.od?.useCase?.query);
             const isActive = active?.record.id === p.id;
             const isPending = pendingApplyId === p.id;
+            const links = derivePluginSourceLinks(p);
             return (
               <div
                 key={p.id}
@@ -234,6 +236,38 @@ export function PluginLoopHome({ onSubmit }: Props) {
                   ) : null}
                   {p.manifest?.od?.kind ? <span>· {p.manifest.od.kind}</span> : null}
                 </div>
+                {links.authorName || links.sourceUrl ? (
+                  <div
+                    className="plugin-loop-home__card-byline"
+                    data-testid={`plugin-card-byline-${p.id}`}
+                  >
+                    {links.authorName ? (
+                      <span className="plugin-loop-home__card-byline-author">
+                        <CardAvatar
+                          name={links.authorName}
+                          avatarUrl={links.authorAvatarUrl}
+                        />
+                        <span>by {links.authorName}</span>
+                      </span>
+                    ) : null}
+                    {links.sourceUrl ? (
+                      <a
+                        href={links.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="plugin-loop-home__card-byline-source"
+                        title={`View source: ${links.sourceLabel}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Icon
+                          name={p.sourceKind === 'github' ? 'github' : 'external-link'}
+                          size={11}
+                        />
+                        <span>{links.sourceLabel}</span>
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="plugin-loop-home__card-actions">
                   <button
                     type="button"
@@ -279,5 +313,37 @@ export function PluginLoopHome({ onSubmit }: Props) {
         />
       ) : null}
     </div>
+  );
+}
+
+interface CardAvatarProps {
+  name: string;
+  avatarUrl: string | null;
+}
+
+function CardAvatar({ name, avatarUrl }: CardAvatarProps) {
+  // Same hide-on-error pattern as the modal avatar — keep failures
+  // silent so a renamed/missing github profile doesn't show a
+  // broken-image icon in the grid.
+  const [broken, setBroken] = useState(false);
+  if (avatarUrl && !broken) {
+    return (
+      <img
+        className="plugin-loop-home__card-avatar"
+        src={avatarUrl}
+        alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return (
+    <span
+      className="plugin-loop-home__card-avatar plugin-loop-home__card-avatar--fallback"
+      aria-hidden
+    >
+      {authorInitials(name)}
+    </span>
   );
 }

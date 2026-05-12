@@ -126,6 +126,24 @@ const MAC_WINDOW_CHROME_CSS = `
   .avatar-popover * {
     -webkit-app-region: no-drag;
   }
+  /* Header-less entry: clear traffic-light gutter and provide a
+     drag region so the window can still be moved by the empty
+     space along the top of the rail and the topbar background. */
+  .entry-shell--no-header .entry-nav-rail {
+    padding-top: 38px !important;
+  }
+  .entry-shell--no-header .entry-main__topbar {
+    -webkit-app-region: drag;
+    min-height: 24px;
+    padding-top: 16px !important;
+  }
+  .entry-shell--no-header .entry-main__topbar button,
+  .entry-shell--no-header .entry-main__topbar [role="button"],
+  .entry-shell--no-header .entry-main__topbar a,
+  .entry-shell--no-header .avatar-popover,
+  .entry-shell--no-header .avatar-popover * {
+    -webkit-app-region: no-drag;
+  }
 `;
 
 function createPendingHtml(): string {

@@ -772,7 +772,6 @@ export function App() {
           templates={templates}
           promptTemplates={promptTemplates}
           defaultDesignSystemId={config.designSystemId}
-          config={config}
           agents={agents}
           skillsLoading={skillsLoading}
           designSystemsLoading={dsLoading}
@@ -786,9 +785,6 @@ export function App() {
           onDeleteProject={handleDeleteProject}
           onChangeDefaultDesignSystem={handleChangeDefaultDesignSystem}
           onOpenSettings={openSettings}
-          onAdoptPet={openPetSettings}
-          onAdoptPetInline={handleAdoptPet}
-          onTogglePet={handleTogglePet}
         />
       )}
       <PetOverlay

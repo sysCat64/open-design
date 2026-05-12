@@ -1,0 +1,195 @@
+/* ============================================================
+   Entry layout — header-less variant
+   - Single-row shell (`entry-shell--no-header`)
+   - Left icon-only nav rail (`entry-nav-rail`)
+   - Center scroll container (`entry-main--scroll`)
+   ============================================================ */
+
+/* Header-less shell variant. The rail's logo replaces the chrome
+   brand and a floating top-right control replaces the chrome
+   actions, so the entry view does not render `AppChromeHeader`. */
+.entry-shell--no-header {
+  grid-template-rows: 1fr;
+}
+
+/* Left rail */
+.entry-nav-rail {
+  width: 64px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  padding: 14px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  overflow: hidden;
+}
+.entry-nav-rail__group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.entry-nav-rail__logo {
+  appearance: none;
+  width: 40px;
+  height: 40px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background-color 120ms ease, border-color 120ms ease,
+    transform 120ms ease;
+}
+.entry-nav-rail__logo:hover {
+  background: var(--bg-subtle);
+}
+.entry-nav-rail__logo:active {
+  transform: scale(0.96);
+}
+.entry-nav-rail__logo:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.entry-nav-rail__logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+.entry-nav-rail__btn {
+  appearance: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.entry-nav-rail__btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+.entry-nav-rail__btn.is-active {
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.entry-nav-rail__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Avatar / settings dropdown — language picker section.
+   The cog in the top-right corner opens an `avatar-popover` (shared
+   with the project view) and now hosts an inline collapsible
+   language list, so users can switch locales without opening the
+   full Settings dialog. The base popover styles live in
+   `index.css`; this block adds only the redesign-specific bits. */
+.avatar-item-chevron {
+  margin-left: 4px;
+  color: var(--text-faint);
+}
+.avatar-language-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 2px 4px;
+  padding: 2px 0;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  scrollbar-width: thin;
+}
+.avatar-item--lang {
+  padding-left: 14px;
+}
+.avatar-item--lang.is-active {
+  color: var(--accent);
+}
+.avatar-item--lang.is-active .avatar-item-meta {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+/* Center scroll column */
+.entry-main--scroll {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 0;
+}
+.entry-main__inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 32px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* Floating top-right control inside the main scroll area. Stays
+   visually pinned regardless of scroll position so the avatar /
+   settings menu is always reachable. */
+.entry-main__topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px 0;
+  pointer-events: none;
+}
+.entry-main__topbar > * {
+  pointer-events: auto;
+}
+
+/* Section wrapper for the Projects / Design systems views */
+.entry-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.entry-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.entry-section__title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 900px) {
+  .entry-nav-rail {
+    width: 56px;
+  }
+  .entry-main__inner {
+    padding: 24px 16px 56px;
+  }
+}

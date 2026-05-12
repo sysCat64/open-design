@@ -130,7 +130,7 @@ describe('PluginsSection', () => {
     render(<PluginsSection onCleared={onCleared} />);
     fireEvent.click(await waitFor(() => screen.getByTitle('A fixture')));
     await waitFor(() => screen.getByTestId('context-chip-strip'));
-    fireEvent.click(screen.getByLabelText(/Remove skill Sample Skill/));
+    fireEvent.click(screen.getByLabelText(/Remove Skill Sample Skill/));
     await waitFor(() => expect(onCleared).toHaveBeenCalled());
     expect(screen.queryByTestId('context-chip-strip')).toBeNull();
     expect(screen.queryByTestId('plugin-inputs-form')).toBeNull();

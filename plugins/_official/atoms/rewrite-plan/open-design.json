@@ -5,12 +5,31 @@
   "version": "0.1.0",
   "description": "Long-running multi-file rewrite plan with ownership boundaries and patch-safety guarantees.",
   "license": "MIT",
-  "tags": ["atom", "first-party", "code-migration", "tune-collab", "phase-7"],
-  "compat": { "agentSkills": [{ "path": "./SKILL.md" }] },
+  "author": {
+    "name": "Open Design",
+    "url": "https://github.com/nexu-io"
+  },
+  "homepage": "https://github.com/nexu-io/open-design/tree/main/plugins/_official/atoms/rewrite-plan",
+  "tags": [
+    "atom",
+    "first-party",
+    "code-migration",
+    "tune-collab",
+    "phase-7"
+  ],
+  "compat": {
+    "agentSkills": [
+      {
+        "path": "./SKILL.md"
+      }
+    ]
+  },
   "od": {
     "kind": "atom",
     "scenario": "code-migration",
     "mode": "planning",
-    "capabilities": ["prompt:inject"]
+    "capabilities": [
+      "prompt:inject"
+    ]
   }
 }

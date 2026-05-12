@@ -1115,6 +1115,42 @@ code {
   gap: 8px;
 }
 .mention-item:hover { background: var(--bg-subtle); border-color: transparent; }
+.mention-section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 4px 8px 2px;
+}
+.mention-section-label + .mention-section-label,
+.mention-item + .mention-section-label {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.mention-item--plugin {
+  align-items: flex-start;
+}
+.mention-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.mention-item-body strong {
+  font-weight: 500;
+  font-size: 12px;
+}
+.mention-meta--desc {
+  white-space: normal;
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: var(--text-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
 .mention-item code {
   flex: 1;
   font-size: 11px;
@@ -3410,10 +3446,13 @@ code {
   min-height: 0;
   background: var(--bg);
 }
+/* Note: `.entry-shell--no-header` and the rest of the entry-view
+   redesign live in `src/styles/home/`. Keeping that bundle out of
+   this file makes upstream `index.css` rebases easier. */
 
 .entry {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: 64px 1fr;
   height: 100%;
   min-height: 0;
   background: var(--bg);
@@ -6765,20 +6804,15 @@ button.connector-action.is-loading {
 
 @media (max-width: 900px) {
   .entry {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 56px 1fr !important;
     height: 100%;
     min-height: 0;
   }
-  .entry-side {
-    width: 100% !important;
-    min-width: 0;
-    max-width: none;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-  .entry-side-resizer { display: none; }
   .example-card { grid-template-columns: 1fr; }
   .example-preview { height: 240px; }
+  /* Note: home-redesign breakpoints (entry-nav-rail, entry-main__inner,
+     home-hero__title) live in the per-component files under
+     `src/styles/home/` to keep upstream `index.css` rebases narrow. */
 }
 
 /* ============================================================
@@ -12392,224 +12426,8 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
 }
 
 /* ============================================================
-   Pet — discovery surfaces (right rail, welcome teaser, composer)
+   Pet — discovery surfaces (welcome teaser, composer)
    ============================================================ */
-
-/* Right-side rail in the entry view. Renders as a third grid column
-   (the entry's gridTemplateColumns is set inline to `… 1fr auto`). */
-.pet-rail {
-  width: 232px;
-  border-left: 1px solid var(--border);
-  background: var(--bg-panel);
-  padding: 18px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
-}
-.pet-rail.collapsed {
-  width: 36px;
-  padding: 18px 4px;
-  align-items: center;
-}
-.pet-rail-toggle {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 4px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  cursor: pointer;
-  width: 100%;
-}
-.pet-rail-toggle:hover {
-  background: var(--bg-muted);
-  color: var(--text);
-}
-.pet-rail-toggle-glyph {
-  font-size: 18px;
-  line-height: 1;
-}
-.pet-rail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-.pet-rail-head-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.pet-rail-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text);
-}
-.pet-rail-title strong {
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.pet-rail-collapse {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg-subtle);
-  color: var(--text);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
-}
-.pet-rail-collapse > svg {
-  flex-shrink: 0;
-}
-.pet-rail-collapse:hover {
-  background: var(--bg-muted);
-  border-color: var(--border-strong);
-  color: var(--text-strong);
-}
-.pet-rail-collapse:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(201, 100, 66, 0.32);
-  border-color: var(--accent);
-}
-.pet-rail-hint {
-  font-size: 11.5px;
-  color: var(--text-muted);
-  margin: 0;
-  line-height: 1.45;
-}
-.pet-rail-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.pet-rail-status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: var(--radius-pill);
-  font-size: 11px;
-  background: var(--accent-tint);
-  color: var(--accent-strong);
-  border: 1px solid var(--accent);
-  cursor: pointer;
-}
-.pet-rail-fresh {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: var(--radius-pill);
-  font-size: 11px;
-  background: var(--accent-tint);
-  color: var(--accent-strong);
-  border: 1px dashed var(--accent);
-}
-.pet-rail-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.pet-rail-item {
-  --pet-accent: var(--accent);
-  display: grid;
-  grid-template-columns: 32px 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: var(--radius);
-  background: var(--bg-panel);
-  border: 1px solid transparent;
-  cursor: pointer;
-  text-align: left;
-  color: var(--text);
-}
-.pet-rail-item:hover {
-  background: var(--bg-subtle);
-  border-color: var(--border);
-}
-.pet-rail-item.active {
-  border-color: var(--pet-accent);
-  background: color-mix(in srgb, var(--pet-accent) 8%, transparent);
-}
-.pet-rail-item.custom {
-  border-style: dashed;
-  border-color: var(--border-strong);
-}
-.pet-rail-item.custom.active {
-  border-style: solid;
-  border-color: var(--pet-accent);
-}
-.pet-rail-item-glyph {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  font-size: 18px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--pet-accent) 14%, transparent);
-}
-.pet-rail-item-meta {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.pet-rail-item-name {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-strong);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.pet-rail-item-flavor {
-  font-size: 10.5px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.pet-rail-customize {
-  margin-top: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: var(--radius);
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 12px;
-}
-.pet-rail-customize:hover {
-  background: var(--bg-muted);
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-
-/* Hide the rail on small viewports so it does not crowd the main column. */
-@media (max-width: 1100px) {
-  .pet-rail:not(.collapsed) {
-    display: none;
-  }
-}
 
 /* ----- Welcome dialog teaser ----- */
 .welcome-pet-teaser {
@@ -12943,6 +12761,68 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   font-size: 10.5px;
   color: var(--text-faint);
   text-transform: lowercase;
+}
+/* Plugins panel — each row is a horizontal split: the main button
+   applies the plugin, the side button opens the details modal. */
+.composer-tools-row--plugin {
+  padding: 0;
+  gap: 0;
+}
+.composer-tools-row--plugin .composer-tools-row-body {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.composer-tools-row--plugin .composer-tools-row-meta {
+  text-transform: none;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.composer-tools-row-main {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  min-width: 0;
+}
+.composer-tools-row-main:hover {
+  background: var(--bg-subtle);
+}
+.composer-tools-row-main:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.composer-tools-row-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.composer-tools-row-side:hover {
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+.composer-tools-row-pending {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-left: auto;
 }
 .composer-tools-row-action {
   border-top: 1px solid var(--border-soft);
@@ -13574,7 +13454,6 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
 [dir="rtl"] .icon-only svg[data-lucide="chevron-right"],
 [dir="rtl"] .icon-only svg[data-lucide="arrow-left"],
 [dir="rtl"] .icon-only svg[data-lucide="arrow-right"],
-[dir="rtl"] .pet-rail-collapse svg,
 [dir="rtl"] .welcome-pet-teaser svg {
   transform: scaleX(-1);
 }
@@ -15092,6 +14971,71 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   font-size: 11px;
   flex-wrap: wrap;
 }
+/* Author + source byline — sits between meta chips and the action
+   row, gives every card a visible attribution + clickable source
+   link without the user having to open the details modal. */
+.plugin-loop-home__card-byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.plugin-loop-home__card-byline-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.plugin-loop-home__card-byline-author > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plugin-loop-home__card-byline-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 6px);
+  max-width: 100%;
+}
+.plugin-loop-home__card-byline-source > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+}
+.plugin-loop-home__card-byline-source:hover {
+  color: var(--accent);
+  border-color: var(--border);
+  background: var(--bg-subtle);
+}
+.plugin-loop-home__card-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+}
+.plugin-loop-home__card-avatar--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
 .plugin-loop-home__card-actions {
   display: flex;
   gap: 6px;
@@ -15636,6 +15580,89 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   margin: 0;
   color: var(--text);
   overflow-wrap: anywhere;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.plugin-details-modal__source-kind {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.plugin-details-modal__author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.plugin-details-modal__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+}
+.plugin-details-modal__avatar--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+.plugin-details-modal__author-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.plugin-details-modal__author-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plugin-details-modal__author-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+}
+.plugin-details-modal__ext-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 6px);
+  max-width: 100%;
+}
+.plugin-details-modal__ext-link > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+.plugin-details-modal__ext-link:hover {
+  color: var(--accent);
+  border-color: var(--border);
+  background: var(--bg-subtle);
 }
 
 .plugin-details-modal__foot {
@@ -15837,14 +15864,70 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
 .context-chip-strip__chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 8px;
+  gap: 2px;
+  padding: 0 2px 0 0;
   border-radius: 999px;
   background: var(--bg);
   border: 1px solid var(--border);
   font-size: 11px;
   color: var(--text);
-  max-width: 220px;
+  max-width: 240px;
+}
+/* Per-kind accent stripe — keeps the chip recognisable at a glance
+   without leaning on color-only differentiation (the icon does most
+   of the work). Uses border-left for skill, design-system, etc. */
+.context-chip-strip__chip[data-kind='skill'] {
+  border-left: 3px solid var(--accent, #6e7bff);
+}
+.context-chip-strip__chip[data-kind='design-system'] {
+  border-left: 3px solid #d6a648;
+}
+.context-chip-strip__chip[data-kind='craft'] {
+  border-left: 3px solid #6dbf6d;
+}
+.context-chip-strip__chip[data-kind='asset'] {
+  border-left: 3px solid #8a8a8a;
+}
+.context-chip-strip__chip[data-kind='mcp'] {
+  border-left: 3px solid #c47bd9;
+}
+.context-chip-strip__chip[data-kind='claude-plugin'] {
+  border-left: 3px solid #d97757;
+}
+.context-chip-strip__chip[data-kind='atom'] {
+  border-left: 3px solid #5fb8d1;
+}
+.context-chip-strip__chip[data-kind='plugin'] {
+  border-left: 3px solid var(--accent, #6e7bff);
+}
+.context-chip-strip__body {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 8px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+  text-align: left;
+  border-radius: 999px;
+  min-width: 0;
+}
+.context-chip-strip__chip.is-interactive .context-chip-strip__body {
+  cursor: pointer;
+}
+.context-chip-strip__chip.is-interactive .context-chip-strip__body:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+}
+.context-chip-strip__icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+.context-chip-strip__chip.is-interactive .context-chip-strip__body:hover
+  .context-chip-strip__icon {
+  color: var(--accent, var(--text));
 }
 .context-chip-strip__kind {
   font-size: 10px;
@@ -15909,3 +15992,10 @@ body.entry-resizing { cursor: col-resize; user-select: none; }
   min-height: 56px;
   resize: vertical;
 }
+
+/* ============================================================
+   Note: the entry-view home redesign (left rail, centered hero,
+   recent projects strip, plugins-home section, new-project modal)
+   lives in `src/styles/home/`. Imported from `app/layout.tsx`
+   alongside this file so upstream `index.css` rebases stay narrow.
+   ============================================================ */

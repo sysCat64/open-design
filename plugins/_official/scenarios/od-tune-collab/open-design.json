@@ -1,10 +1,12 @@
 {
   "$schema": "https://open-design.ai/schemas/plugin.v1.json",
   "name": "od-tune-collab",
-  "title": "Open Design — tune & collaborate (default scenario)",
+  "title": "Tune & collaborate (default scenario)",
   "version": "0.1.0",
   "description": "Default reference pipeline for the tune-collab taskKind.",
   "license": "MIT",
+  "author": { "name": "Open Design", "url": "https://github.com/nexu-io" },
+  "homepage": "https://github.com/nexu-io/open-design/tree/main/plugins/_official/scenarios/od-tune-collab",
   "tags": ["scenario", "first-party", "tune-collab"],
   "compat": { "agentSkills": [{ "path": "./SKILL.md" }] },
   "od": {
@@ -22,6 +24,16 @@
         { "id": "handoff",   "atoms": ["handoff"] }
       ]
     },
-    "capabilities": ["prompt:inject", "fs:read", "fs:write"]
+    "capabilities": ["prompt:inject", "fs:read", "fs:write"],
+    "useCase": {
+      "query": "Tune the existing artifact: {{tuneInstruction}}. Pick a direction, apply a small reviewable patch, critique until the score converges, then hand off as a patch (or deployable-app when build-test ran upstream).",
+      "exampleOutputs": [
+        { "path": "./examples/hero-tune.html", "title": "Hero copy tune cycle (before/after)" }
+      ]
+    },
+    "inputs": [
+      { "name": "tuneInstruction", "type": "string", "required": true,  "label": "What to change", "placeholder": "Sharpen the hero copy and name the audience." },
+      { "name": "direction",       "type": "string", "required": false, "label": "Preferred direction", "placeholder": "shorter / sharper / more playful" }
+    ]
   }
 }

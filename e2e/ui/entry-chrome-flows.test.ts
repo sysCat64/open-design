@@ -38,26 +38,24 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('entry chrome settings menu toggles pet rail visibility', async ({ page }) => {
+test('entry chrome settings menu opens with brand header and no pet rail', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('new-project-panel')).toBeVisible();
   await expect(page.locator('.app-chrome-header')).toBeVisible();
   await expect(page.locator('.app-chrome-brand[aria-label="Open Design"]')).toBeVisible();
   await expect(page.locator('.entry-brand')).toHaveCount(0);
 
+  // The pet picker rail was removed; pet adoption now lives in
+  // Settings → Pet exclusively. Make sure no rail leaks back into the
+  // entry layout.
+  await expect(page.locator('.pet-rail')).toHaveCount(0);
+
   const openSettings = page.getByRole('button', { name: /open settings/i });
   await openSettings.click();
   const settingsMenu = page.locator('.avatar-popover[role="menu"]');
   await expect(settingsMenu).toBeVisible();
-
-  await settingsMenu.getByRole('button', { name: /hide pet picker/i }).click();
-  await expect(settingsMenu).toHaveCount(0);
-  await expect(page.locator('.pet-rail')).toHaveCount(0);
-
-  await openSettings.click();
-  await expect(page.getByRole('button', { name: /show pet picker/i })).toBeVisible();
-  await page.getByRole('button', { name: /show pet picker/i }).click();
-  await expect(page.locator('.pet-rail')).toBeVisible();
+  await expect(settingsMenu.getByRole('button', { name: /hide pet picker/i })).toHaveCount(0);
+  await expect(settingsMenu.getByRole('button', { name: /show pet picker/i })).toHaveCount(0);
 });
 
 test('entry chrome avoids horizontal overflow on compact desktop width', async ({ page }) => {

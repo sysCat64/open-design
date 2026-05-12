@@ -12,10 +12,16 @@ import { projectRawUrl, uploadProjectFiles, openFolderDialog } from "../provider
 import { patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig } from "../state/mcp";
+import { listPlugins } from "../state/projects";
 import type { AppConfig, ChatAttachment, ChatCommentAttachment, ProjectFile, ProjectMetadata } from "../types";
-import type { ResearchOptions } from '@open-design/contracts';
+import type {
+  ContextItem,
+  InstalledPluginRecord,
+  ResearchOptions,
+} from '@open-design/contracts';
 import { Icon } from "./Icon";
-import { PluginsSection } from "./PluginsSection";
+import { PluginDetailsModal } from "./PluginDetailsModal";
+import { PluginsSection, type PluginsSectionHandle } from "./PluginsSection";
 import { BUILT_IN_PETS, CUSTOM_PET_ID, resolveActivePet } from "./pet/pets";
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
@@ -147,13 +153,21 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // shown in the slash-command palette so `/mcp <id>` inserts a hint into
     // the prompt that nudges the model to use that server's tools.
     const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
+    // Installed plugins, fetched lazily for the tools-menu Plugins tab and
+    // the @-mention picker. Both surfaces share the same list so the
+    // count badge on the trigger stays consistent.
+    const [installedPlugins, setInstalledPlugins] = useState<InstalledPluginRecord[]>([]);
+    // Detail modal — opened from a context chip click (kind === 'plugin')
+    // or from the tools-menu "Details" affordance.
+    const [detailsRecord, setDetailsRecord] = useState<InstalledPluginRecord | null>(null);
+    const pluginsSectionRef = useRef<PluginsSectionHandle | null>(null);
     // Consolidated "tools" popover — a single dropdown anchored to the
     // leading sliders icon that hosts MCP / Import / Pet quick actions and
     // a shortcut to open the full Settings dialog. Replaces the previous
     // row of three standalone buttons (which overflowed in narrow chats).
     const [toolsOpen, setToolsOpen] = useState(false);
-    type ToolsTab = 'mcp' | 'import' | 'pet';
-    const [toolsTab, setToolsTab] = useState<ToolsTab>('mcp');
+    type ToolsTab = 'plugins' | 'mcp' | 'import' | 'pet';
+    const [toolsTab, setToolsTab] = useState<ToolsTab>('plugins');
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const toolsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -217,17 +231,48 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       };
     }, []);
 
+    // Lazy-fetch installed plugins once on mount; the tools-menu Plugins
+    // tab and the @-mention picker both consume this list.
+    useEffect(() => {
+      if (!projectId) return;
+      let cancelled = false;
+      void listPlugins().then((rows) => {
+        if (cancelled) return;
+        setInstalledPlugins(rows);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [projectId]);
+
+    // Composer-side plugin list: hide bundled atoms (pipeline-only) and,
+    // when the project pins a plugin, collapse to that single id so the
+    // tools-menu and @-mention picker reflect the user's earlier pick.
+    const pluginsForComposer = useMemo<InstalledPluginRecord[]>(() => {
+      const allowedKinds = new Set(['skill', 'scenario', 'bundle']);
+      const rows = installedPlugins.filter((p) => {
+        const k = p.manifest?.od?.kind;
+        return !k || allowedKinds.has(k);
+      });
+      if (pinnedPluginId) {
+        return rows.filter((p) => p.id === pinnedPluginId);
+      }
+      return rows;
+    }, [installedPlugins, pinnedPluginId]);
+
     // Resolve which tabs to surface in the consolidated tools popover.
-    // We intentionally always render at least the Import tab, since it has
-    // unconditional folder linking. MCP and Pet tabs only show when their
-    // respective wiring was provided by the parent (App).
+    // Plugins is always visible while a project is active so users can
+    // apply context without leaving the composer. MCP and Pet tabs only
+    // show when their respective wiring was provided by the parent (App);
+    // Import is always available (folder linking is unconditional).
     const availableTabs = useMemo<ToolsTab[]>(() => {
       const tabs: ToolsTab[] = [];
+      if (projectId) tabs.push('plugins');
       if (onOpenMcpSettings) tabs.push('mcp');
       tabs.push('import');
       if (petEnabled) tabs.push('pet');
       return tabs;
-    }, [onOpenMcpSettings, petEnabled]);
+    }, [projectId, onOpenMcpSettings, petEnabled]);
 
     // When the popover opens, snap the active tab to the first available one
     // so the user never lands on an empty / hidden tab if their config
@@ -603,6 +648,30 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       });
     }
 
+    async function insertPluginMention(record: InstalledPluginRecord) {
+      if (!mention) return;
+      const ta = textareaRef.current;
+      const cursor = mention.cursor;
+      const before = draft.slice(0, cursor);
+      const after = draft.slice(cursor);
+      // Strip the @<query> token entirely — picking a plugin applies it
+      // as context (a chip lands in PluginsSection's active block), so
+      // there is no useful token to leave inline. Keep a single space
+      // if the surrounding context expects one to avoid mashing words
+      // together.
+      const stripped = before.replace(/(^|\s)@([^\s@]*)$/, '$1');
+      const next = stripped + after;
+      setDraft(next);
+      setMention(null);
+      await pluginsSectionRef.current?.applyById(record.id, record);
+      requestAnimationFrame(() => {
+        if (!ta) return;
+        ta.focus();
+        const pos = stripped.length;
+        ta.setSelectionRange(pos, pos);
+      });
+    }
+
     function removeStaged(p: string) {
       setStaged((s) => s.filter((a) => a.path !== p));
     }
@@ -638,10 +707,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       reset();
     }
 
-    // The @-picker treats the project listing as path-shaped (path + size).
-    // ProjectFile.path is optional, so fall back to .name for the legacy
-    // flat shape — both ChatComposer and the old code paths see the same
-    // entries.
+    // The @-picker offers a unified search across two surfaces: project
+    // files (a path attachment is added + the @path token is inserted)
+    // and installed plugins (the plugin is applied via PluginsSection's
+    // imperative handle, the same path the tools-menu uses). The popover
+    // groups them so users can discover both kinds without leaving the
+    // textarea.
     const filteredFiles = mention
       ? projectFiles
           .filter((f) => f.type === undefined || f.type === "file")
@@ -650,6 +721,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             return key.toLowerCase().includes(mention.q.toLowerCase());
           })
           .slice(0, 12)
+      : [];
+    const filteredPlugins = mention
+      ? pluginsForComposer
+          .filter((p) => {
+            if (!mention.q) return true;
+            const q = mention.q.toLowerCase();
+            return (
+              p.title.toLowerCase().includes(q) ||
+              p.id.toLowerCase().includes(q) ||
+              (p.manifest?.description ?? '').toLowerCase().includes(q)
+            );
+          })
+          .slice(0, 6)
       : [];
 
     return (
@@ -700,33 +784,31 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             />
           ) : null}
           {/*
-            Phase 2B / spec §8.4 — inline plugins rail above the
-            composer input. The rail is a slim horizontal strip so it
-            stays out of the way of the existing chat input chrome;
-            applying a plugin hydrates the draft with the rendered
-            brief, leaving the existing send / @-mention / staged
-            attachment flows untouched.
-
-            When the project was created with a plugin pinned
-            (PluginLoopHome on Home), the rail is filtered to that
-            single plugin id so the composer reflects the pick the
-            user made on Home instead of re-offering every installed
-            plugin. The active plugin also appears as a context chip
-            on each user message (UserMessage in ChatPane).
+            Spec §8.4 — context bar above the composer input. The
+            section now behaves as a pure context bar: it renders the
+            active plugin's chips + inputs form when one is applied,
+            but never the always-on rail. Plugins are picked from the
+            tools-menu Plugins tab or the @-mention popover so the
+            composer chrome stays out of the way until the user wants
+            to attach context.
           */}
           {projectId ? (
             <PluginsSection
+              ref={pluginsSectionRef}
               projectId={projectId}
-              variant="strip"
-              filter={
-                pinnedPluginId
-                  ? { pluginIds: [pinnedPluginId] }
-                  : { kinds: ['skill', 'scenario', 'bundle'] }
-              }
+              showRail={false}
               onApplied={(brief) => {
-                if (typeof brief === 'string' && brief.length > 0 && draft.trim().length === 0) {
-                  setDraft(brief);
+                // Use functional setState so stale closures from the @-mention
+                // flow (which awaits applyById after setDraft) still see the
+                // latest draft value before deciding whether to seed.
+                if (typeof brief === 'string' && brief.length > 0) {
+                  setDraft((cur) => (cur.trim().length === 0 ? brief : cur));
                 }
+              }}
+              onChipDetails={(item: ContextItem) => {
+                if (item.kind !== 'plugin') return;
+                const record = installedPlugins.find((p) => p.id === item.id);
+                if (record) setDetailsRecord(record);
               }}
             />
           ) : null}
@@ -774,8 +856,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 }
               }}
             />
-            {mention && filteredFiles.length > 0 ? (
-              <MentionPopover files={filteredFiles} onPick={insertMention} />
+            {mention && (filteredFiles.length > 0 || filteredPlugins.length > 0) ? (
+              <MentionPopover
+                files={filteredFiles}
+                plugins={filteredPlugins}
+                onPickFile={insertMention}
+                onPickPlugin={(record) => void insertPluginMention(record)}
+              />
             ) : null}
             {slash && filteredSlash.length > 0 ? (
               <SlashPopover
@@ -832,6 +919,17 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                         className={`composer-tools-tab${toolsTab === tab ? ' active' : ''}`}
                         onClick={() => setToolsTab(tab)}
                       >
+                        {tab === 'plugins' ? (
+                          <>
+                            <Icon name="sparkles" size={12} />
+                            <span>Plugins</span>
+                            {pluginsForComposer.length > 0 ? (
+                              <span className="composer-tools-tab-count">
+                                {pluginsForComposer.length}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : null}
                         {tab === 'mcp' ? (
                           <>
                             <Icon name="link" size={12} />
@@ -862,6 +960,22 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                   </div>
 
                   <div className="composer-tools-content">
+                    {toolsTab === 'plugins' ? (
+                      <ToolsPluginsPanel
+                        plugins={pluginsForComposer}
+                        onApply={async (record) => {
+                          const result = await pluginsSectionRef.current?.applyById(
+                            record.id,
+                            record,
+                          );
+                          if (result) setToolsOpen(false);
+                        }}
+                        onShowDetails={(record) => {
+                          setDetailsRecord(record);
+                          setToolsOpen(false);
+                        }}
+                      />
+                    ) : null}
                     {toolsTab === 'mcp' && onOpenMcpSettings ? (
                       <ToolsMcpPanel
                         servers={mcpServers}
@@ -974,6 +1088,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         </div>
         {uploadError ? <span className="composer-hint">{uploadError}</span> : null}
         <span className="composer-hint">{t('chat.composerHint')}</span>
+        {detailsRecord ? (
+          <PluginDetailsModal
+            record={detailsRecord}
+            onClose={() => setDetailsRecord(null)}
+            onUse={async (record) => {
+              await pluginsSectionRef.current?.applyById(record.id, record);
+              setDetailsRecord(null);
+            }}
+          />
+        ) : null}
       </div>
     );
   }
@@ -1042,6 +1166,71 @@ function StagedCommentAttachments({
             aria-label={t('chat.comments.removeAttachmentAria', { name: a.elementId })}
           >
             <Icon name="close" size={11} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ToolsPluginsPanel({
+  plugins,
+  onApply,
+  onShowDetails,
+}: {
+  plugins: InstalledPluginRecord[];
+  onApply: (record: InstalledPluginRecord) => void | Promise<void>;
+  onShowDetails: (record: InstalledPluginRecord) => void;
+}) {
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  if (plugins.length === 0) {
+    return (
+      <div className="composer-tools-empty">
+        No plugins installed yet. Install one with{' '}
+        <code>od plugin install &lt;source&gt;</code>.
+      </div>
+    );
+  }
+  return (
+    <div className="composer-tools-list">
+      {plugins.map((p) => (
+        <div key={p.id} className="composer-tools-row composer-tools-row--plugin">
+          <button
+            type="button"
+            className="composer-tools-row-main"
+            onClick={async () => {
+              setPendingId(p.id);
+              try {
+                await onApply(p);
+              } finally {
+                setPendingId(null);
+              }
+            }}
+            disabled={pendingId !== null}
+            aria-busy={pendingId === p.id ? 'true' : undefined}
+            title={p.manifest?.description ?? p.title}
+          >
+            <Icon name="sparkles" size={12} />
+            <span className="composer-tools-row-body">
+              <strong>{p.title}</strong>
+              {p.manifest?.description ? (
+                <span className="composer-tools-row-meta">
+                  {p.manifest.description}
+                </span>
+              ) : null}
+            </span>
+            {pendingId === p.id ? (
+              <span className="composer-tools-row-pending">Applying…</span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            className="composer-tools-row-side"
+            onClick={() => onShowDetails(p)}
+            title={`View details for ${p.title}`}
+            aria-label={`View details for ${p.title}`}
+          >
+            <Icon name="eye" size={12} />
           </button>
         </div>
       ))}
@@ -1278,32 +1467,68 @@ function SlashPopover({
 
 function MentionPopover({
   files,
-  onPick,
+  plugins,
+  onPickFile,
+  onPickPlugin,
 }: {
   files: ProjectFile[];
-  onPick: (path: string) => void;
+  plugins: InstalledPluginRecord[];
+  onPickFile: (path: string) => void;
+  onPickPlugin: (record: InstalledPluginRecord) => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (ref.current) ref.current.scrollTop = 0;
-  }, [files]);
+  }, [files, plugins]);
+  if (files.length === 0 && plugins.length === 0) return null;
   return (
     <div className="mention-popover" data-testid="mention-popover" ref={ref}>
-      {files.map((f) => {
-        const key = f.path ?? f.name;
-        return (
-          <button
-            key={key}
-            className="mention-item"
-            onClick={() => onPick(key)}
-          >
-            <code>{key}</code>
-            {f.size != null ? (
-              <span className="mention-meta">{prettySize(f.size)}</span>
-            ) : null}
-          </button>
-        );
-      })}
+      {plugins.length > 0 ? (
+        <>
+          <div className="mention-section-label">Plugins</div>
+          {plugins.map((p) => (
+            <button
+              key={`plugin-${p.id}`}
+              className="mention-item mention-item--plugin"
+              onClick={() => onPickPlugin(p)}
+              title={p.manifest?.description ?? p.title}
+            >
+              <Icon name="sparkles" size={12} />
+              <span className="mention-item-body">
+                <strong>{p.title}</strong>
+                {p.manifest?.description ? (
+                  <span className="mention-meta mention-meta--desc">
+                    {p.manifest.description}
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          ))}
+        </>
+      ) : null}
+      {files.length > 0 ? (
+        <>
+          {plugins.length > 0 ? (
+            <div className="mention-section-label">Files</div>
+          ) : null}
+          {files.map((f) => {
+            const key = f.path ?? f.name;
+            return (
+              <button
+                key={`file-${key}`}
+                className="mention-item"
+                onClick={() => onPickFile(key)}
+              >
+                <Icon name="file" size={12} />
+                <code>{key}</code>
+                {f.size != null ? (
+                  <span className="mention-meta">{prettySize(f.size)}</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </>
+      ) : null}
     </div>
   );
 }

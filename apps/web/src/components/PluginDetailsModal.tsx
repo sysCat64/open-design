@@ -24,6 +24,7 @@ import type {
   PluginManifest,
 } from '@open-design/contracts';
 import { Icon } from './Icon';
+import { authorInitials, derivePluginSourceLinks } from '../runtime/plugin-source';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -122,6 +123,14 @@ export function PluginDetailsModal({
   }
 
   const installedLabel = formattedInstalledAt();
+
+  // Source / author / contribute link derivation. Centralised in
+  // ../runtime/plugin-source so the Home card can reuse the byline
+  // shape and the parsing rules stay unit-tested in one place.
+  const links = useMemo(() => derivePluginSourceLinks(record), [record]);
+  const hasAuthorBlock = Boolean(
+    links.authorName || links.authorProfileUrl || links.homepageUrl,
+  );
 
   return (
     <div
@@ -517,8 +526,97 @@ export function PluginDetailsModal({
             </Section>
           ) : null}
 
-          <Section title="Source">
+          {hasAuthorBlock ? (
+            <Section
+              title="Author"
+              hint="Who maintains this plugin and where to follow them."
+            >
+              <div
+                className="plugin-details-modal__author"
+                data-testid="plugin-details-author"
+              >
+                <AuthorAvatar
+                  name={links.authorName}
+                  avatarUrl={links.authorAvatarUrl}
+                />
+                <div className="plugin-details-modal__author-meta">
+                  {links.authorName ? (
+                    <div className="plugin-details-modal__author-name">
+                      {links.authorName}
+                    </div>
+                  ) : null}
+                  <div className="plugin-details-modal__author-links">
+                    {links.authorProfileUrl ? (
+                      <ExternalLink
+                        href={links.authorProfileUrl}
+                        icon="github"
+                        testId="plugin-details-author-profile"
+                      >
+                        {githubProfileLabel(links.authorProfileUrl)}
+                      </ExternalLink>
+                    ) : null}
+                    {links.homepageUrl ? (
+                      <ExternalLink
+                        href={links.homepageUrl}
+                        icon="external-link"
+                        testId="plugin-details-author-homepage"
+                      >
+                        Homepage
+                      </ExternalLink>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </Section>
+          ) : null}
+
+          <Section
+            title="Source"
+            action={
+              links.contributeUrl ? (
+                <a
+                  className="plugin-details-modal__chip-btn"
+                  href={links.contributeUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="plugin-details-contribute"
+                  title={
+                    links.contributeOnGithub
+                      ? 'Open an issue on GitHub'
+                      : 'Open the contribute page'
+                  }
+                >
+                  <Icon
+                    name={links.contributeOnGithub ? 'github' : 'external-link'}
+                    size={12}
+                  />
+                  Contribute
+                </a>
+              ) : undefined
+            }
+          >
             <dl className="plugin-details-modal__source">
+              <div>
+                <dt>Origin</dt>
+                <dd>
+                  <span className="plugin-details-modal__source-kind">
+                    {links.sourceKindLabel}
+                  </span>
+                  {links.sourceUrl ? (
+                    <ExternalLink
+                      href={links.sourceUrl}
+                      icon={
+                        record.sourceKind === 'github' ? 'github' : 'external-link'
+                      }
+                      testId="plugin-details-source-link"
+                    >
+                      {links.sourceLabel}
+                    </ExternalLink>
+                  ) : (
+                    <code>{links.sourceLabel}</code>
+                  )}
+                </dd>
+              </div>
               <div>
                 <dt>Path</dt>
                 <dd>
@@ -625,6 +723,74 @@ function ContextGroup({ label, count, children }: ContextGroupProps) {
       <div className="plugin-details-modal__chips">{children}</div>
     </div>
   );
+}
+
+interface AuthorAvatarProps {
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+function AuthorAvatar({ name, avatarUrl }: AuthorAvatarProps) {
+  // Hide-on-error pattern: if the avatar URL 404s (e.g. the github
+  // profile was renamed) we silently swap to the initials fallback
+  // rather than showing a broken-image placeholder.
+  const [broken, setBroken] = useState(false);
+  if (avatarUrl && !broken) {
+    return (
+      <img
+        className="plugin-details-modal__avatar"
+        src={avatarUrl}
+        alt={name ? `${name} avatar` : 'Author avatar'}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return (
+    <span
+      className="plugin-details-modal__avatar plugin-details-modal__avatar--fallback"
+      aria-hidden
+    >
+      {authorInitials(name)}
+    </span>
+  );
+}
+
+interface ExternalLinkProps {
+  href: string;
+  icon: 'github' | 'external-link';
+  children: ReactNode;
+  testId?: string;
+}
+
+function ExternalLink({ href, icon, children, testId }: ExternalLinkProps) {
+  return (
+    <a
+      className="plugin-details-modal__ext-link"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      data-testid={testId}
+    >
+      <Icon name={icon} size={12} />
+      <span>{children}</span>
+    </a>
+  );
+}
+
+/** Strip the github.com prefix from a profile URL for compact display. */
+function githubProfileLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (/^(?:www\.)?github\.com$/.test(parsed.hostname)) {
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      if (segments.length > 0) return `@${segments[0]}`;
+    }
+    return parsed.hostname + parsed.pathname.replace(/\/$/, '');
+  } catch {
+    return url;
+  }
 }
 
 interface ConnectorListProps {

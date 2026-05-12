@@ -1148,16 +1148,6 @@ export interface Dict {
   'pet.overlayAria': string;
   'pet.spriteAria': string;
   'pet.spriteTitle': string;
-  // Right-side rail (entry view)
-  'pet.railAria': string;
-  'pet.railTitle': string;
-  'pet.railHint': string;
-  'pet.railExpand': string;
-  'pet.railCollapse': string;
-  'pet.railHide': string;
-  'pet.railShow': string;
-  'pet.railCustomFlavor': string;
-  'pet.railCustomize': string;
   // Composer pet menu
   'pet.composerTitle': string;
   'pet.composerMenuTitle': string;

@@ -154,12 +154,35 @@ export const PluginsSection = forwardRef<PluginsSectionHandle, Props>(
 
     const showRail = props.showRail ?? true;
 
+    // Always surface the active plugin itself as the first chip so the
+    // user gets unambiguous confirmation that the plugin was applied.
+    // Many plugins emit contextItems of their own (skill / design-system
+    // / asset chips); when they don't, the synthetic plugin chip is the
+    // only signal they have. The chip is also clickable when
+    // onChipDetails is wired so users can inspect the plugin manifest.
+    const chipItems: ContextItem[] = (() => {
+      if (!applied) return [];
+      const items = applied.contextItems ?? [];
+      const recordId = activeRecord?.id;
+      if (!recordId) return items;
+      const alreadyHasSelf = items.some(
+        (it) => it.kind === 'plugin' && it.id === recordId,
+      );
+      if (alreadyHasSelf) return items;
+      const selfChip: ContextItem = {
+        kind: 'plugin',
+        id: recordId,
+        label: activeRecord?.title ?? recordId,
+      };
+      return [selfChip, ...items];
+    })();
+
     return (
       <div className="plugins-section" data-testid="plugins-section">
         {applied ? (
           <div className="plugins-section__active" data-active-plugin-id={activeRecord?.id}>
             <ContextChipStrip
-              items={applied.contextItems ?? []}
+              items={chipItems}
               onRemove={onChipRemove}
               {...(props.onChipDetails ? { onSelect: props.onChipDetails } : {})}
             />

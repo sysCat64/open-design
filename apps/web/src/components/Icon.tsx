@@ -21,8 +21,10 @@ type IconName =
   | 'file'
   | 'file-code'
   | 'folder'
+  | 'github'
   | 'grid'
   | 'history'
+  | 'home'
   | 'image'
   | 'import'
   | 'kanban'
@@ -31,8 +33,10 @@ type IconName =
   | 'mic'
   | 'minus'
   | 'orbit'
+  | 'palette'
   | 'pencil'
   | 'plus'
+  | 'star'
   | 'play'
   | 'present'
   | 'refresh'
@@ -216,6 +220,13 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
         </svg>
       );
+    case 'github':
+      return (
+        <svg {...common}>
+          <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
+          <path d="M9 18c-4.51 2-5-2-7-2" />
+        </svg>
+      );
     case 'grid':
       return (
         <svg {...common}>
@@ -231,6 +242,12 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
           <path d="M3 12a9 9 0 1 0 3-6.7" />
           <path d="M3 4v5h5" />
           <path d="M12 7v5l3 2" />
+        </svg>
+      );
+    case 'home':
+      return (
+        <svg {...common}>
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2z" />
         </svg>
       );
     case 'image':
@@ -305,6 +322,16 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
           />
           <circle cx="12" cy="12" r="2.25" fill="currentColor" stroke="none" />
           <circle cx="16" cy="6.8" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case 'palette':
+      return (
+        <svg {...common}>
+          <path d="M12 2a10 10 0 1 0 0 20 2 2 0 0 0 0-4 1.5 1.5 0 0 1-1.06-2.56l.78-.78A2 2 0 0 1 13.13 14H17a5 5 0 0 0 5-5c0-3.87-4.48-7-10-7Z" />
+          <circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+          <circle cx="9.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+          <circle cx="14" cy="6" r="1" fill="currentColor" stroke="none" />
+          <circle cx="17.5" cy="9" r="1" fill="currentColor" stroke="none" />
         </svg>
       );
     case 'pencil':
@@ -408,6 +435,12 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
           <path d="M19 21v-1" />
           <path d="M22 17h-3" />
           <path d="M16 17h-1" />
+        </svg>
+      );
+    case 'star':
+      return (
+        <svg {...common}>
+          <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
         </svg>
       );
     case 'stop':
