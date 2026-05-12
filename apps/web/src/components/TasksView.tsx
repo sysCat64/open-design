@@ -189,14 +189,14 @@ export function TasksView({ config, onOpenOrbitSettings }: Props) {
           <p className="tasks-view__kicker">Automation workspace</p>
           <div className="tasks-view__title-row">
             <h1 id="tasks-title" className="entry-section__title">
-              Tasks
+              Automations
             </h1>
             <span className="tasks-view__coming-soon">Coming soon</span>
           </div>
           <p className="tasks-view__lede">
-            Tasks turn prompts into durable work: Orbit runs them, routines keep
-            them around, schedules decide when they fire, and live artifacts show
-            what changed.
+            Automations turn prompts into durable work: Orbit runs them,
+            routines keep them around, schedules decide when they fire, and live
+            artifacts show what changed.
           </p>
         </div>
         <button
@@ -205,7 +205,7 @@ export function TasksView({ config, onOpenOrbitSettings }: Props) {
           onClick={onOpenOrbitSettings}
         >
           <Icon name="plus" size={14} />
-          <span>New task</span>
+          <span>New automation</span>
         </button>
       </header>
 
@@ -217,7 +217,7 @@ export function TasksView({ config, onOpenOrbitSettings }: Props) {
         </span>
       </div>
 
-      <div className="tasks-primitives" aria-label="Task primitives">
+      <div className="tasks-primitives" aria-label="Automation primitives">
         <PrimitiveCard
           icon="orbit"
           title="Orbit"
@@ -249,10 +249,10 @@ export function TasksView({ config, onOpenOrbitSettings }: Props) {
       </div>
 
       <div className="tasks-board">
-        <aside className="tasks-list" aria-label="Tasks list">
+        <aside className="tasks-list" aria-label="Automations list">
           <div className="tasks-list__head">
             <div>
-              <h2>Tasks</h2>
+              <h2>Automations</h2>
               <p>{tasks.length} routines and runs</p>
             </div>
             <button type="button" onClick={onOpenOrbitSettings}>
@@ -260,7 +260,7 @@ export function TasksView({ config, onOpenOrbitSettings }: Props) {
               <span>New</span>
             </button>
           </div>
-          <div className="tasks-filter" role="tablist" aria-label="Task filters">
+          <div className="tasks-filter" role="tablist" aria-label="Automation filters">
             {FILTERS.map((filter) => (
               <button
                 key={filter.id}
@@ -310,7 +310,7 @@ export function TasksView({ config, onOpenOrbitSettings }: Props) {
             <p>{selectedTask.meta}</p>
           </div>
 
-          <div className="task-slots" aria-label="Task configuration">
+          <div className="task-slots" aria-label="Automation configuration">
             <Slot icon="bell" label="Trigger" value={selectedTask.trigger} />
             <Slot icon="sparkles" label="Pattern" value={selectedTask.pattern} />
             <Slot icon="orbit" label="Runtime" value={selectedTask.runtime} />

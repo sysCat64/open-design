@@ -35,8 +35,18 @@ export type ChipScenarioPluginId =
   | 'example-hyperframes';
 
 export type ChipAction =
-  | { kind: 'apply-scenario'; pluginId: ChipScenarioPluginId; projectKind: ProjectKind }
-  | { kind: 'apply-figma-migration'; pluginId: 'od-figma-migration'; projectKind: ProjectKind }
+  | {
+      kind: 'apply-scenario';
+      pluginId: ChipScenarioPluginId;
+      projectKind: ProjectKind;
+      inputs?: Record<string, unknown>;
+    }
+  | {
+      kind: 'apply-figma-migration';
+      pluginId: 'od-figma-migration';
+      projectKind: ProjectKind;
+      inputs?: Record<string, unknown>;
+    }
   | { kind: 'create-plugin' }
   | { kind: 'import-folder' }
   | { kind: 'open-template-picker' };
@@ -63,7 +73,16 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     label: 'Prototype',
     icon: 'palette',
     group: 'create',
-    action: { kind: 'apply-scenario', pluginId: 'od-new-generation', projectKind: 'prototype' },
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-new-generation',
+      projectKind: 'prototype',
+      inputs: {
+        artifactKind: 'interactive prototype',
+        audience: 'product teams',
+        topic: 'a new product experience',
+      },
+    },
   },
   {
     id: 'live-artifact',
@@ -76,28 +95,66 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     // artifact atoms). We still surface it as a separate chip so the
     // user can pick their target surface up front instead of routing
     // through Prototype + a metadata flip.
-    action: { kind: 'apply-scenario', pluginId: 'od-new-generation', projectKind: 'prototype' },
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-new-generation',
+      projectKind: 'prototype',
+      inputs: {
+        artifactKind: 'live HTML artifact',
+        audience: 'product teams',
+        topic: 'an interactive product concept',
+      },
+    },
   },
   {
     id: 'deck',
     label: 'Slide deck',
     icon: 'present',
     group: 'create',
-    action: { kind: 'apply-scenario', pluginId: 'od-new-generation', projectKind: 'deck' },
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-new-generation',
+      projectKind: 'deck',
+      inputs: {
+        artifactKind: 'slide deck',
+        audience: 'stakeholders',
+        topic: 'a product strategy',
+      },
+    },
   },
   {
     id: 'image',
     label: 'Image',
     icon: 'image',
     group: 'create',
-    action: { kind: 'apply-scenario', pluginId: 'od-media-generation', projectKind: 'image' },
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-media-generation',
+      projectKind: 'image',
+      inputs: {
+        mediaKind: 'image',
+        subject: 'a polished product concept',
+        style: 'cinematic, high-quality, on-brand',
+        aspect: '16:9',
+      },
+    },
   },
   {
     id: 'video',
     label: 'Video',
     icon: 'play',
     group: 'create',
-    action: { kind: 'apply-scenario', pluginId: 'od-media-generation', projectKind: 'video' },
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-media-generation',
+      projectKind: 'video',
+      inputs: {
+        mediaKind: 'video',
+        subject: 'a short product reveal',
+        style: 'cinematic, high-quality, on-brand',
+        aspect: '16:9',
+      },
+    },
   },
   {
     id: 'hyperframes',
@@ -116,14 +173,33 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     label: 'Audio',
     icon: 'mic',
     group: 'create',
-    action: { kind: 'apply-scenario', pluginId: 'od-media-generation', projectKind: 'audio' },
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-media-generation',
+      projectKind: 'audio',
+      inputs: {
+        mediaKind: 'audio',
+        subject: 'a concise audio identity for a product',
+        style: 'clear, polished, modern',
+        aspect: '16:9',
+      },
+    },
   },
   {
     id: 'other',
     label: 'Other',
     icon: 'sparkles',
     group: 'create',
-    action: { kind: 'apply-scenario', pluginId: 'od-new-generation', projectKind: 'other' },
+    action: {
+      kind: 'apply-scenario',
+      pluginId: 'od-new-generation',
+      projectKind: 'other',
+      inputs: {
+        artifactKind: 'design artifact',
+        audience: 'the target audience',
+        topic: 'the user request',
+      },
+    },
   },
   {
     id: 'create-plugin',
@@ -139,7 +215,15 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     icon: 'import',
     group: 'migrate',
     hint: 'Migrate a Figma frame into the active design system.',
-    action: { kind: 'apply-figma-migration', pluginId: 'od-figma-migration', projectKind: 'prototype' },
+    action: {
+      kind: 'apply-figma-migration',
+      pluginId: 'od-figma-migration',
+      projectKind: 'prototype',
+      inputs: {
+        figmaUrl: 'the Figma file URL you provide',
+        targetStack: 'React 18 + Tailwind',
+      },
+    },
   },
   {
     id: 'folder',

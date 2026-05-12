@@ -2,7 +2,7 @@
 //
 // Renders a narrow icon-only column. The first slot is the brand
 // logo (clicking navigates to home), followed by primary
-// actions (new project, home, projects, tasks, plugins, design systems, integrations). A small
+// actions (new project, home, projects, automations, plugins, design systems, integrations). A small
 // help launcher sits at the bottom and opens a popover with the
 // canonical "ask for help / submit a feature / what's new / download
 // desktop" external links. Language switching and other account-
@@ -103,8 +103,8 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
         </NavButton>
         <NavButton
           active={view === 'tasks'}
-          ariaLabel="Tasks"
-          tooltip="Tasks"
+          ariaLabel="Automations"
+          tooltip="Automations"
           onClick={() => onViewChange('tasks')}
           testId="entry-nav-tasks"
         >

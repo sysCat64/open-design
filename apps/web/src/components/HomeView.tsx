@@ -224,6 +224,7 @@ export function HomeView({
         void usePlugin(record, undefined, {
           projectKind: chip.action.projectKind,
           chipId: chip.id,
+          inputs: chip.action.inputs,
         });
         return;
       }

@@ -53,7 +53,11 @@ describe('router entry sub-views', () => {
     expect(parseRoute('/design-systems')).toEqual({ kind: 'home', view: 'design-systems' });
   });
 
-  it('parses /tasks as the tasks entry view', () => {
+  it('parses /automations as the automations entry view', () => {
+    expect(parseRoute('/automations')).toEqual({ kind: 'home', view: 'tasks' });
+  });
+
+  it('keeps /tasks as an alias for older links', () => {
     expect(parseRoute('/tasks')).toEqual({ kind: 'home', view: 'tasks' });
   });
 

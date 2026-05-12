@@ -43,7 +43,7 @@ export function parseRoute(pathname: string): Route {
   if (parts[0] === 'design-systems') {
     return { kind: 'home', view: 'design-systems' };
   }
-  if (parts[0] === 'tasks') {
+  if (parts[0] === 'automations' || parts[0] === 'tasks') {
     return { kind: 'home', view: 'tasks' };
   }
   if (parts[0] === 'plugins' && !parts[1]) {
@@ -69,7 +69,7 @@ export function parseRoute(pathname: string): Route {
 export function buildPath(route: Route): string {
   if (route.kind === 'home') {
     if (route.view === 'projects') return '/projects';
-    if (route.view === 'tasks') return '/tasks';
+    if (route.view === 'tasks') return '/automations';
     if (route.view === 'plugins') return '/plugins';
     if (route.view === 'design-systems') return '/design-systems';
     if (route.view === 'integrations') return '/integrations';
