@@ -1120,6 +1120,66 @@ async function resolveProjectChildDirectory(projectRoot, relativePath) {
   return real;
 }
 
+function execFileBuffered(command, args, opts = {}) {
+  return new Promise((resolve) => {
+    execFile(command, args, { timeout: 120_000, maxBuffer: 1024 * 1024, ...opts }, (error, stdout, stderr) => {
+      resolve({
+        ok: !error,
+        code: error?.code,
+        stdout: String(stdout ?? '').trim(),
+        stderr: String(stderr ?? '').trim(),
+        error,
+      });
+    });
+  });
+}
+
+async function readProjectPluginManifest(folder) {
+  const raw = await fs.promises.readFile(path.join(folder, 'open-design.json'), 'utf8');
+  const manifest = JSON.parse(raw);
+  const name = typeof manifest.name === 'string' && manifest.name.trim()
+    ? manifest.name.trim()
+    : path.basename(folder);
+  return {
+    name,
+    title: typeof manifest.title === 'string' ? manifest.title : name,
+    version: typeof manifest.version === 'string' ? manifest.version : '0.1.0',
+    manifest,
+  };
+}
+
+function githubRepoNameFromPluginName(name) {
+  const slug = String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/(^[-._]+|[-._]+$)/g, '');
+  return slug || 'open-design-plugin';
+}
+
+async function ensureGhReady() {
+  const version = await execFileBuffered('gh', ['--version'], { timeout: 10_000 });
+  if (!version.ok) {
+    return {
+      ok: false,
+      code: 'gh-not-installed',
+      message: 'GitHub CLI is not installed. Install it, then click this action again.',
+      url: 'https://cli.github.com/',
+      log: [version.stderr || version.stdout || 'gh --version failed'],
+    };
+  }
+  const auth = await execFileBuffered('gh', ['auth', 'status', '--hostname', 'github.com'], { timeout: 10_000 });
+  if (!auth.ok) {
+    return {
+      ok: false,
+      code: 'gh-not-authenticated',
+      message: 'GitHub CLI is installed but not authenticated. Run `gh auth login --web`, finish browser authorization, then click this action again.',
+      url: 'https://github.com/login/device',
+      log: [auth.stderr || auth.stdout || 'gh auth status failed'],
+    };
+  }
+  return { ok: true, log: [version.stdout, auth.stderr || auth.stdout].filter(Boolean) };
+}
+
 const CLOUDFLARE_PAGES_PROJECT_METADATA_KEY = 'cloudflarePagesProjectName';
 
 function cloudflarePagesDeploymentMetadata(projectName) {
@@ -5817,6 +5877,184 @@ export async function startServer({
         status === 404 ? 'PLUGIN_FOLDER_NOT_FOUND' : 'BAD_REQUEST',
         String(err?.message || err),
       );
+    }
+  });
+
+  app.post('/api/projects/:id/plugins/publish-github', async (req, res) => {
+    try {
+      const project = getProject(db, req.params.id);
+      if (!project) {
+        sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+        return;
+      }
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const relativePath = normalizeProjectPluginFolderPath(body.path);
+      const projectRoot = resolveProjectDir(PROJECTS_DIR, req.params.id, project.metadata);
+      const folder = await resolveProjectChildDirectory(projectRoot, relativePath);
+      const gh = await ensureGhReady();
+      if (!gh.ok) {
+        res.status(409).json(gh);
+        return;
+      }
+      const meta = await readProjectPluginManifest(folder);
+      const repoName = githubRepoNameFromPluginName(meta.name);
+      const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'od-plugin-publish-'));
+      const work = path.join(tmp, repoName);
+      await fs.promises.cp(folder, work, { recursive: true });
+      const log = [...(gh.log ?? [])];
+      for (const [cmd, args] of [
+        ['git', ['init']],
+        ['git', ['add', '.']],
+        ['git', ['-c', 'user.name=Open Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Publish ${meta.title}`]],
+      ]) {
+        const result = await execFileBuffered(cmd, args, { cwd: work });
+        log.push(result.stdout || result.stderr);
+        if (!result.ok) {
+          await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
+          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the plugin repository.`, log });
+          return;
+        }
+      }
+      const create = await execFileBuffered('gh', [
+        'repo',
+        'create',
+        repoName,
+        '--public',
+        '--source',
+        work,
+        '--push',
+      ], { cwd: work });
+      log.push(create.stdout || create.stderr);
+      if (!create.ok) {
+        await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
+        res.status(500).json({ ok: false, code: 'gh-repo-create-failed', message: 'GitHub repo creation failed.', log });
+        return;
+      }
+      const view = await execFileBuffered('gh', ['repo', 'view', '--json', 'url', '--jq', '.url'], { cwd: work });
+      const url = view.ok && view.stdout ? view.stdout : undefined;
+      await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
+      res.json({
+        ok: true,
+        message: url ? `Published ${meta.title} to ${url}.` : `Published ${meta.title} to GitHub.`,
+        ...(url ? { url } : {}),
+        log,
+      });
+    } catch (err) {
+      res.status(400).json({ ok: false, message: String(err?.message || err), log: [] });
+    }
+  });
+
+  app.post('/api/projects/:id/plugins/contribute-open-design', async (req, res) => {
+    try {
+      const project = getProject(db, req.params.id);
+      if (!project) {
+        sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+        return;
+      }
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const relativePath = normalizeProjectPluginFolderPath(body.path);
+      const projectRoot = resolveProjectDir(PROJECTS_DIR, req.params.id, project.metadata);
+      const folder = await resolveProjectChildDirectory(projectRoot, relativePath);
+      const gh = await ensureGhReady();
+      if (!gh.ok) {
+        res.status(409).json(gh);
+        return;
+      }
+      const meta = await readProjectPluginManifest(folder);
+      const repoName = githubRepoNameFromPluginName(meta.name);
+      const user = await execFileBuffered('gh', ['api', 'user', '--jq', '.login'], { timeout: 20_000 });
+      if (!user.ok || !user.stdout) {
+        res.status(409).json({
+          ok: false,
+          code: 'gh-user-unavailable',
+          message: 'Could not read the authenticated GitHub user from gh.',
+          log: [...(gh.log ?? []), user.stderr || user.stdout],
+        });
+        return;
+      }
+      const login = user.stdout.trim();
+      const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'od-plugin-pr-'));
+      const work = path.join(tmp, 'open-design');
+      const branch = `plugin/${repoName}-${Date.now()}`;
+      const dest = path.join(work, 'plugins', 'community', repoName);
+      const bodyText = [
+        `Adds ${meta.title} as a community Open Design plugin.`,
+        '',
+        '## Source',
+        '',
+        `- Generated from project: ${project.id}`,
+        `- Manifest name: \`${meta.name}\``,
+        `- Version: \`${meta.version}\``,
+        '',
+        '## Checklist',
+        '',
+        '- [ ] Maintainer reviewed manifest metadata',
+        '- [ ] Maintainer verified plugin skill instructions',
+      ].join('\n');
+      const log = [...(gh.log ?? [])];
+      for (const [cmd, args, opts] of [
+        ['gh', ['repo', 'fork', 'nexu-io/open-design', '--remote=false'], { cwd: tmp }],
+        ['gh', ['repo', 'clone', 'nexu-io/open-design', work], { cwd: tmp }],
+        ['git', ['checkout', '-b', branch], { cwd: work }],
+        ['git', ['remote', 'add', 'fork', `https://github.com/${login}/open-design.git`], { cwd: work }],
+      ]) {
+        const result = await execFileBuffered(cmd, args, opts);
+        log.push(result.stdout || result.stderr);
+        const toleratedExistingFork =
+          cmd === 'gh' && args[0] === 'repo' && args[1] === 'fork' &&
+          /already exists|existing fork/i.test(String(result.stderr || result.stdout));
+        const toleratedExistingRemote =
+          cmd === 'git' && args[0] === 'remote' &&
+          /already exists/i.test(String(result.stderr || result.stdout));
+        if (!result.ok && !toleratedExistingFork && !toleratedExistingRemote) {
+          await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
+          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Open Design PR.`, log });
+          return;
+        }
+      }
+      await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+      await fs.promises.cp(folder, dest, { recursive: true });
+      for (const [cmd, args] of [
+        ['git', ['add', `plugins/community/${repoName}`]],
+        ['git', ['-c', 'user.name=Open Design', '-c', 'user.email=open-design@example.invalid', 'commit', '-m', `Add ${meta.title} plugin`]],
+        ['git', ['push', '-u', 'fork', branch]],
+      ]) {
+        const result = await execFileBuffered(cmd, args, { cwd: work });
+        log.push(result.stdout || result.stderr);
+        if (!result.ok) {
+          await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
+          res.status(500).json({ ok: false, code: `${cmd}-failed`, message: `${cmd} failed while preparing the Open Design PR.`, log });
+          return;
+        }
+      }
+      const pr = await execFileBuffered('gh', [
+        'pr',
+        'create',
+        '--repo',
+        'nexu-io/open-design',
+        '--head',
+        `${login}:${branch}`,
+        '--base',
+        'main',
+        '--title',
+        `Add ${meta.title} plugin`,
+        '--body',
+        bodyText,
+      ], { cwd: work });
+      log.push(pr.stdout || pr.stderr);
+      await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
+      if (!pr.ok) {
+        res.status(500).json({ ok: false, code: 'gh-pr-create-failed', message: 'Open Design PR creation failed.', log });
+        return;
+      }
+      res.json({
+        ok: true,
+        message: `Created Open Design PR for ${meta.title}.`,
+        url: pr.stdout || undefined,
+        log,
+      });
+    } catch (err) {
+      res.status(400).json({ ok: false, message: String(err?.message || err), log: [] });
     }
   });
 

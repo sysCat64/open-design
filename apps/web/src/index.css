@@ -7150,7 +7150,7 @@ button.connector-action.is-loading {
   grid-template-columns: 36px minmax(0, 1fr) auto;
 }
 .df-row-plugin-folder {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, auto);
   cursor: default;
 }
 .df-row-folder-main {
@@ -7191,6 +7191,12 @@ button.connector-action.is-loading {
 .df-plugin-install:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+.df-plugin-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 .df-inline-notice {
   margin: 0 20px 6px;

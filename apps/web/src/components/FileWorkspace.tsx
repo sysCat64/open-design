@@ -12,7 +12,11 @@ import {
   uploadProjectFiles,
   writeProjectTextFile,
 } from '../providers/registry';
-import { installGeneratedPluginFolder } from '../state/projects';
+import {
+  contributeGeneratedPluginToOpenDesign,
+  installGeneratedPluginFolder,
+  publishGeneratedPluginToGitHub,
+} from '../state/projects';
 import {
   type ChatCommentAttachment,
   liveArtifactSummaryToWorkspaceEntry,
@@ -607,6 +611,12 @@ export function FileWorkspace({
             onNewSketch={startNewSketch}
             onInstallPluginFolder={(relativePath) =>
               installGeneratedPluginFolder(projectId, relativePath)
+            }
+            onPublishPluginFolder={(relativePath) =>
+              publishGeneratedPluginToGitHub(projectId, relativePath)
+            }
+            onContributePluginFolder={(relativePath) =>
+              contributeGeneratedPluginToOpenDesign(projectId, relativePath)
             }
           />
         ) : isActiveSketch && activeSketch && activeFile ? (

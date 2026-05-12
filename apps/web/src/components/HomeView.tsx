@@ -24,6 +24,7 @@ import type { Project } from '../types';
 import { HomeHero } from './HomeHero';
 import type { HomeHeroChip } from './home-hero/chips';
 import {
+  buildPluginAuthoringPrompt,
   PLUGIN_AUTHORING_PROMPT,
   type HomePromptHandoff,
 } from './home-hero/plugin-authoring';
@@ -81,6 +82,7 @@ export function HomeView({
   const [pendingApplyId, setPendingApplyId] = useState<string | null>(null);
   const [pendingChipId, setPendingChipId] = useState<string | null>(null);
   const [pendingAuthoringChipId, setPendingAuthoringChipId] = useState<string | null>(null);
+  const [pendingAuthoringPrompt, setPendingAuthoringPrompt] = useState(PLUGIN_AUTHORING_PROMPT);
   const [fallbackProjectKind, setFallbackProjectKind] = useState<ProjectKind | null>(null);
   const [active, setActive] = useState<ActivePlugin | null>(null);
   const [prompt, setPrompt] = useState('');
@@ -169,11 +171,13 @@ export function HomeView({
     setPrompt('');
   }
 
-  function queuePluginAuthoring(chipId: string | null) {
+  function queuePluginAuthoring(chipId: string | null, goal?: string) {
+    const nextPrompt = goal ? buildPluginAuthoringPrompt(goal) : PLUGIN_AUTHORING_PROMPT;
     setActive(null);
     setFallbackProjectKind('other');
     setError(null);
-    setPrompt(PLUGIN_AUTHORING_PROMPT);
+    setPrompt(nextPrompt);
+    setPendingAuthoringPrompt(nextPrompt);
     setPendingAuthoringChipId(chipId ?? 'plugin-authoring');
     requestAnimationFrame(() => inputRef.current?.focus());
   }
@@ -191,13 +195,13 @@ export function HomeView({
       // project so the server-side fallback can still attempt to bind.
       return;
     }
-    void usePlugin(record, PLUGIN_AUTHORING_PROMPT, {
+    void usePlugin(record, pendingAuthoringPrompt, {
       projectKind: 'other',
       chipId: pendingAuthoringChipId === 'plugin-authoring' ? undefined : pendingAuthoringChipId,
       ...(authoringRecord ? {} : { inputs: AUTHORING_DEFAULT_SCENARIO_INPUTS }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAuthoringChipId, pluginsLoading, plugins]);
+  }, [pendingAuthoringChipId, pendingAuthoringPrompt, pluginsLoading, plugins]);
 
   // Stage B of plugin-driven-flow-plan: the chip rail dispatcher.
   // Pure UI-state mapping — the heavy lifting (apply / import) is
@@ -295,6 +299,7 @@ export function HomeView({
         pendingApplyId={pendingApplyId}
         onUse={(record) => void usePlugin(record)}
         onOpenDetails={setDetailsRecord}
+        onCreatePlugin={(goal) => queuePluginAuthoring(null, goal)}
       />
 
       {detailsRecord ? (

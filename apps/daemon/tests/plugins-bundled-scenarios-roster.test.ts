@@ -34,6 +34,7 @@ const CANONICAL = new Map<string, { taskKind: string; pipelineStages: string[] }
 const SIBLINGS = new Map<string, { taskKind: string }>([
   ['od-media-generation', { taskKind: 'new-generation' }],
   ['od-plugin-authoring', { taskKind: 'new-generation' }],
+  ['od-design-refine',    { taskKind: 'tune-collab' }],
   ['od-react-export',     { taskKind: 'tune-collab' }],
   ['od-nextjs-export',    { taskKind: 'tune-collab' }],
   ['od-vue-export',       { taskKind: 'tune-collab' }],

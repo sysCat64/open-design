@@ -66,6 +66,9 @@ describe('extractCategories', () => {
       extractCategories(fixture({ id: 'react-export', tags: ['export', 'react'], od: { mode: 'export' } })),
     ).toEqual(['export']);
     expect(
+      extractCategories(fixture({ id: 'pptx-export', tags: ['html-to-pptx'], od: { mode: 'utility' } })),
+    ).toEqual(['export']);
+    expect(
       extractCategories(fixture({ id: 'tune', od: { taskKind: 'tune-collab', mode: 'scenario' } })),
     ).toEqual(['refine']);
     expect(
@@ -114,7 +117,19 @@ describe('extractSubcategories', () => {
     ).toEqual(['nextjs']);
     expect(
       extractSubcategories(fixture({ id: 'react-export', tags: ['export', 'react'], od: { mode: 'export' } })),
-    ).toEqual(['react']);
+    ).toEqual(['reactjs']);
+    expect(
+      extractSubcategories(fixture({ id: 'vue-export', tags: ['export', 'vuejs'], od: { mode: 'export' } })),
+    ).toEqual(['vuejs']);
+    expect(
+      extractSubcategories(fixture({ id: 'svelte-export', tags: ['export', 'sveltejs'], od: { mode: 'export' } })),
+    ).toEqual(['sveltejs']);
+    expect(
+      extractSubcategories(fixture({ id: 'pptx-export', tags: ['html-to-pptx'], od: { mode: 'utility' } })),
+    ).toEqual(['pptx']);
+    expect(
+      extractSubcategories(fixture({ id: 'pdf-export', tags: ['pdf-guide'], od: { mode: 'utility' } })),
+    ).toEqual(['pdf']);
   });
 });
 
@@ -129,6 +144,11 @@ describe('buildFacetCatalog', () => {
       fixture({ id: 'e', od: { mode: 'video' } }),
       fixture({ id: 'f', tags: ['hyperframes'], od: { mode: 'video' } }),
       fixture({ id: 'react-export', tags: ['export', 'react'], od: { mode: 'export' } }),
+      fixture({ id: 'next-export', tags: ['export', 'nextjs', 'react'], od: { mode: 'export' } }),
+      fixture({ id: 'vue-export', tags: ['export', 'vuejs'], od: { mode: 'export' } }),
+      fixture({ id: 'svelte-export', tags: ['export', 'sveltejs'], od: { mode: 'export' } }),
+      fixture({ id: 'pptx-export', tags: ['html-to-pptx'], od: { mode: 'utility' } }),
+      fixture({ id: 'pdf-export', tags: ['pdf-guide'], od: { mode: 'utility' } }),
       fixture({ id: 'tune', od: { taskKind: 'tune-collab', mode: 'scenario' } }),
       fixture({ id: 'author', tags: ['plugin-authoring'], od: { taskKind: 'new-generation', mode: 'scenario' } }),
       // Plugins outside the shortlist do not surface as filter pills.
@@ -144,18 +164,25 @@ describe('buildFacetCatalog', () => {
     ]);
     expect(catalog.category.find((o) => o.slug === 'create')?.count).toBe(6);
     expect(catalog.category.find((o) => o.slug === 'import')?.count).toBe(1);
-    expect(catalog.category.find((o) => o.slug === 'export')?.count).toBe(1);
+    expect(catalog.category.find((o) => o.slug === 'export')?.count).toBe(6);
     expect(catalog.category.find((o) => o.slug === 'refine')?.count).toBe(1);
     expect(catalog.category.find((o) => o.slug === 'extend')?.count).toBe(1);
-    expect(catalog.subcategory.create.map((o) => o.slug)).toEqual([
+    expect((catalog.subcategory.create ?? []).map((o) => o.slug)).toEqual([
       'deck',
       'design-system',
       'hyperframes',
       'image',
       'video',
     ]);
-    expect(catalog.subcategory.import.map((o) => o.slug)).toEqual(['from-figma']);
-    expect(catalog.subcategory.export.map((o) => o.slug)).toEqual(['react']);
+    expect((catalog.subcategory.import ?? []).map((o) => o.slug)).toEqual(['from-figma']);
+    expect((catalog.subcategory.export ?? []).map((o) => o.slug)).toEqual([
+      'pptx',
+      'pdf',
+      'nextjs',
+      'reactjs',
+      'vuejs',
+      'sveltejs',
+    ]);
   });
 
   it('returns an empty category axis when no plugin matches a curated bucket', () => {
@@ -175,13 +202,14 @@ describe('applyFacetSelection', () => {
     fixture({ id: 'd', od: { mode: 'video' } }),
     fixture({ id: 'e', tags: ['hyperframes'], od: { mode: 'video' } }),
     fixture({ id: 'f', tags: ['export', 'react'], od: { mode: 'export' } }),
+    fixture({ id: 'h', tags: ['html-to-pptx'], od: { mode: 'utility' } }),
     fixture({ id: 'g', od: { taskKind: 'code-migration', mode: 'scenario' } }),
   ];
 
   it('returns everything when no category is selected', () => {
     expect(
       applyFacetSelection(plugins, { category: null, subcategory: null }).map((p) => p.id),
-    ).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g']);
+    ).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'h', 'g']);
   });
 
   it('filters by the selected category slug', () => {
@@ -190,7 +218,7 @@ describe('applyFacetSelection', () => {
     ).toEqual(['a', 'b', 'c', 'd', 'e']);
     expect(
       applyFacetSelection(plugins, { category: 'export', subcategory: null }).map((p) => p.id),
-    ).toEqual(['f']);
+    ).toEqual(['f', 'h']);
     expect(
       applyFacetSelection(plugins, { category: 'import', subcategory: null }).map((p) => p.id),
     ).toEqual(['g']);
@@ -204,8 +232,11 @@ describe('applyFacetSelection', () => {
       applyFacetSelection(plugins, { category: 'create', subcategory: 'hyperframes' }).map((p) => p.id),
     ).toEqual(['e']);
     expect(
-      applyFacetSelection(plugins, { category: 'export', subcategory: 'react' }).map((p) => p.id),
+      applyFacetSelection(plugins, { category: 'export', subcategory: 'reactjs' }).map((p) => p.id),
     ).toEqual(['f']);
+    expect(
+      applyFacetSelection(plugins, { category: 'export', subcategory: 'pptx' }).map((p) => p.id),
+    ).toEqual(['h']);
   });
 
   it('returns an empty list when no plugin matches the selected category', () => {

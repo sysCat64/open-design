@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyPlugin, installGeneratedPluginFolder } from '../../src/state/projects';
+import {
+  applyPlugin,
+  contributeGeneratedPluginToOpenDesign,
+  installGeneratedPluginFolder,
+  publishGeneratedPluginToGitHub,
+} from '../../src/state/projects';
 
 describe('applyPlugin', () => {
   afterEach(() => {
@@ -104,5 +109,46 @@ describe('installGeneratedPluginFolder', () => {
       message: 'Plugin validation failed.',
       log: ['Validating generated-plugin'],
     });
+  });
+});
+
+describe('generated plugin share actions', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('posts publish and contribute actions for project-relative plugin folders', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({
+        ok: true,
+        message: 'Ready',
+        url: 'https://github.com/example/generated-plugin',
+        log: ['ok'],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const publish = await publishGeneratedPluginToGitHub('project-1', 'generated-plugin');
+    const contribute = await contributeGeneratedPluginToOpenDesign('project-1', 'generated-plugin');
+
+    expect(publish).toMatchObject({ ok: true, message: 'Ready' });
+    expect(contribute).toMatchObject({ ok: true, message: 'Ready' });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/projects/project-1/plugins/publish-github',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ path: 'generated-plugin' }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/projects/project-1/plugins/contribute-open-design',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ path: 'generated-plugin' }),
+      }),
+    );
   });
 });

@@ -22,6 +22,7 @@ afterEach(() => {
   }
   host?.remove();
   host = null;
+  vi.unstubAllGlobals();
 });
 
 function workspaceFile(name: string): ProjectFile {
@@ -182,6 +183,17 @@ describe('DesignFilesPanel plugin folders', () => {
       message: 'Installed Generated Plugin.',
       log: [],
     }));
+    const onPublishPluginFolder = vi.fn(async () => ({
+      ok: true,
+      message: 'Published Generated Plugin.',
+      url: 'https://github.com/acme/generated-plugin',
+    }));
+    const onContributePluginFolder = vi.fn(async () => ({
+      ok: true,
+      message: 'Prepared Open Design contribution.',
+      url: 'https://github.com/nexu-io/open-design/issues/new',
+    }));
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     const container = renderWorkspace(
       <DesignFilesPanel
         projectId="project-1"
@@ -201,6 +213,8 @@ describe('DesignFilesPanel plugin folders', () => {
         onPaste={vi.fn()}
         onNewSketch={vi.fn()}
         onInstallPluginFolder={onInstallPluginFolder}
+        onPublishPluginFolder={onPublishPluginFolder}
+        onContributePluginFolder={onContributePluginFolder}
       />,
     );
 
@@ -213,6 +227,28 @@ describe('DesignFilesPanel plugin folders', () => {
       install?.click();
     });
     expect(onInstallPluginFolder).toHaveBeenCalledWith('generated-plugin');
+
+    const publish = container.querySelector<HTMLButtonElement>(
+      '[data-testid="design-plugin-folder-publish-generated-plugin"]',
+    );
+    const contribute = container.querySelector<HTMLButtonElement>(
+      '[data-testid="design-plugin-folder-contribute-generated-plugin"]',
+    );
+    expect(publish).toBeTruthy();
+    expect(contribute).toBeTruthy();
+    await act(async () => {
+      publish?.click();
+    });
+    expect(onPublishPluginFolder).toHaveBeenCalledWith('generated-plugin');
+    expect(open).toHaveBeenCalledWith(
+      'https://github.com/acme/generated-plugin',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    await act(async () => {
+      contribute?.click();
+    });
+    expect(onContributePluginFolder).toHaveBeenCalledWith('generated-plugin');
   });
 });
 

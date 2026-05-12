@@ -470,6 +470,59 @@ export async function installGeneratedPluginFolder(
   }
 }
 
+export interface PluginShareOutcome {
+  ok: boolean;
+  message: string;
+  url?: string;
+  log?: string[];
+  code?: string;
+}
+
+export async function publishGeneratedPluginToGitHub(
+  projectId: string,
+  relativePath: string,
+): Promise<PluginShareOutcome> {
+  return postGeneratedPluginShareAction(projectId, relativePath, 'publish-github');
+}
+
+export async function contributeGeneratedPluginToOpenDesign(
+  projectId: string,
+  relativePath: string,
+): Promise<PluginShareOutcome> {
+  return postGeneratedPluginShareAction(projectId, relativePath, 'contribute-open-design');
+}
+
+async function postGeneratedPluginShareAction(
+  projectId: string,
+  relativePath: string,
+  action: 'publish-github' | 'contribute-open-design',
+): Promise<PluginShareOutcome> {
+  try {
+    const resp = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/plugins/${action}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: relativePath }),
+      },
+    );
+    const body = (await resp.json().catch(() => null)) as Partial<PluginShareOutcome> | null;
+    return {
+      ok: Boolean(resp.ok && body?.ok),
+      message: body?.message ?? (resp.ok ? 'Action finished.' : 'Plugin share action failed.'),
+      ...(body?.url ? { url: body.url } : {}),
+      ...(body?.log ? { log: body.log } : {}),
+      ...(body?.code ? { code: body.code } : {}),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      message: (err as Error).message,
+      log: [],
+    };
+  }
+}
+
 export async function upgradePlugin(id: string): Promise<PluginInstallOutcome> {
   const log: string[] = [];
   try {

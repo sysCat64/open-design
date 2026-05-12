@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
 import { projectFileUrl } from '../providers/registry';
-import type { PluginInstallOutcome } from '../state/projects';
+import type { PluginInstallOutcome, PluginShareOutcome } from '../state/projects';
 import type { LiveArtifactWorkspaceEntry, ProjectFile, ProjectFileKind } from '../types';
 import { getPluginFolderCandidates } from './design-files/pluginFolders';
 import { Icon } from './Icon';
@@ -24,6 +24,8 @@ interface Props {
   onPaste: () => void;
   onNewSketch: () => void;
   onInstallPluginFolder?: (relativePath: string) => Promise<PluginInstallOutcome>;
+  onPublishPluginFolder?: (relativePath: string) => Promise<PluginShareOutcome>;
+  onContributePluginFolder?: (relativePath: string) => Promise<PluginShareOutcome>;
 }
 
 type Section = 'pages' | 'scripts' | 'images' | 'sketches' | 'other';
@@ -60,6 +62,8 @@ export function DesignFilesPanel({
   onPaste,
   onNewSketch,
   onInstallPluginFolder,
+  onPublishPluginFolder,
+  onContributePluginFolder,
 }: Props) {
   const t = useT();
   const [refreshing, setRefreshing] = useState(false);
@@ -75,6 +79,7 @@ export function DesignFilesPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [installingFolder, setInstallingFolder] = useState<string | null>(null);
+  const [sharingFolder, setSharingFolder] = useState<string | null>(null);
   const [installNotice, setInstallNotice] = useState<string | null>(null);
 
   const grouped = useMemo(() => {
@@ -248,6 +253,24 @@ export function DesignFilesPanel({
     }
   }
 
+  async function handleSharePluginFolder(
+    relativePath: string,
+    action: 'publish' | 'contribute',
+  ) {
+    const run =
+      action === 'publish' ? onPublishPluginFolder : onContributePluginFolder;
+    if (!run || sharingFolder) return;
+    setInstallNotice(null);
+    setSharingFolder(`${action}:${relativePath}`);
+    try {
+      const outcome = await run(relativePath);
+      setInstallNotice(outcome.message);
+      if (outcome.url) window.open(outcome.url, '_blank', 'noopener,noreferrer');
+    } finally {
+      setSharingFolder(null);
+    }
+  }
+
   return (
     <div className={`df-panel ${preview ? '' : 'no-preview'}`}>
       <div className="df-main">
@@ -385,15 +408,39 @@ export function DesignFilesPanel({
                       </button>
                       <span className="df-row-time">{relativeTime(folder.updatedAt, t)}</span>
                       {onInstallPluginFolder ? (
-                        <button
-                          type="button"
-                          className="df-plugin-install"
-                          data-testid={`design-plugin-folder-install-${folder.path}`}
-                          disabled={installingFolder !== null}
-                          onClick={() => void handleInstallPluginFolder(folder.path)}
-                        >
-                          {installingFolder === folder.path ? 'Adding…' : 'Add to My plugins'}
-                        </button>
+                        <div className="df-plugin-actions">
+                          <button
+                            type="button"
+                            className="df-plugin-install"
+                            data-testid={`design-plugin-folder-install-${folder.path}`}
+                            disabled={installingFolder !== null || sharingFolder !== null}
+                            onClick={() => void handleInstallPluginFolder(folder.path)}
+                          >
+                            {installingFolder === folder.path ? 'Adding…' : 'Add to My plugins'}
+                          </button>
+                          {onPublishPluginFolder ? (
+                            <button
+                              type="button"
+                              className="df-plugin-install"
+                              data-testid={`design-plugin-folder-publish-${folder.path}`}
+                              disabled={installingFolder !== null || sharingFolder !== null}
+                              onClick={() => void handleSharePluginFolder(folder.path, 'publish')}
+                            >
+                              {sharingFolder === `publish:${folder.path}` ? 'Publishing…' : 'Publish repo'}
+                            </button>
+                          ) : null}
+                          {onContributePluginFolder ? (
+                            <button
+                              type="button"
+                              className="df-plugin-install"
+                              data-testid={`design-plugin-folder-contribute-${folder.path}`}
+                              disabled={installingFolder !== null || sharingFolder !== null}
+                              onClick={() => void handleSharePluginFolder(folder.path, 'contribute')}
+                            >
+                              {sharingFolder === `contribute:${folder.path}` ? 'Preparing…' : 'Open Design PR'}
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   ))}

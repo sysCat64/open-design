@@ -31,10 +31,13 @@ interface Props {
   pendingApplyId: string | null;
   onUse: (record: InstalledPluginRecord) => void;
   onOpenDetails: (record: InstalledPluginRecord) => void;
+  onCreatePlugin?: () => void;
   title?: string;
   subtitle?: string;
   emptyMessage?: string;
 }
+
+const CONTRIBUTION_CARD_THRESHOLD = 3;
 
 export function PluginsHomeSection({
   plugins,
@@ -43,6 +46,7 @@ export function PluginsHomeSection({
   pendingApplyId,
   onUse,
   onOpenDetails,
+  onCreatePlugin,
   title = 'Community',
   subtitle = 'Things you can do and tasks to complete — packaged as plugins. Pick one to load a starter prompt, or type freely above.',
   emptyMessage = 'Catalog is empty. Bundled plugins ship with Open Design and should appear here automatically — try restarting the daemon if this persists.',
@@ -143,11 +147,72 @@ export function PluginsHomeSection({
                   onOpenDetails={onOpenDetails}
                 />
               ))}
+              {onCreatePlugin && shouldShowContributionCard(filtered.length, selection.category) ? (
+                <ContributionCard
+                  label={resolveContributionLabel(catalog, selection)}
+                  onCreatePlugin={onCreatePlugin}
+                />
+              ) : null}
             </div>
           )}
         </>
       )}
     </section>
+  );
+}
+
+function shouldShowContributionCard(count: number, category: string | null): boolean {
+  return Boolean(category) && count < CONTRIBUTION_CARD_THRESHOLD;
+}
+
+function resolveContributionLabel(
+  catalog: ReturnType<typeof usePluginFacets>['catalog'],
+  selection: ReturnType<typeof usePluginFacets>['selection'],
+): string {
+  if (!selection.category) return 'this category';
+  if (selection.subcategory) {
+    const sub = catalog.subcategory[selection.category]?.find(
+      (opt) => opt.slug === selection.subcategory,
+    );
+    if (sub) return sub.label;
+  }
+  return catalog.category.find((opt) => opt.slug === selection.category)?.label ?? 'this category';
+}
+
+function ContributionCard({
+  label,
+  onCreatePlugin,
+}: {
+  label: string;
+  onCreatePlugin: () => void;
+}) {
+  return (
+    <article
+      role="listitem"
+      className="plugins-home__card plugins-home__card--contribute"
+      data-testid="plugins-home-contribution-card"
+    >
+      <div className="plugins-home__contribute-inner">
+        <span className="plugins-home__contribute-icon" aria-hidden>
+          <Icon name="plus" size={18} />
+        </span>
+        <div>
+          <h3>Contribute a {label} plugin</h3>
+          <p>
+            This area is still sparse. Turn your workflow into a reusable
+            plugin, add it to My plugins, then share it with the community.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="plugins-home__action plugins-home__action--primary"
+          onClick={onCreatePlugin}
+          data-testid="plugins-home-contribution-create"
+        >
+          Create plugin
+        </button>
+      </div>
+    </article>
   );
 }
 

@@ -38,6 +38,7 @@ import { GithubStarBadge } from './GithubStarBadge';
 import { formatStars, GITHUB_REPO_URL, useGithubStars } from './useGithubStars';
 import { HomeView } from './HomeView';
 import {
+  buildPluginAuthoringPrompt,
   createPluginAuthoringHandoff,
   type HomePromptHandoff,
 } from './home-hero/plugin-authoring';
@@ -257,8 +258,13 @@ export function EntryShell({
     navigate({ kind: 'home', view: next });
   }
 
-  function startPluginAuthoring() {
-    setHomePromptHandoff(createPluginAuthoringHandoff(Date.now()));
+  function startPluginAuthoring(goal?: string) {
+    setHomePromptHandoff(
+      createPluginAuthoringHandoff(
+        Date.now(),
+        goal ? buildPluginAuthoringPrompt(goal) : undefined,
+      ),
+    );
     changeView('home');
   }
 

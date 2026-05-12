@@ -38,7 +38,7 @@ const PLUGINS_TABS: ReadonlyArray<{
   { id: 'team', label: 'Team / Enterprise', hint: 'Coming soon' },
 ];
 
-export function PluginsView({ onCreatePlugin }: { onCreatePlugin?: () => void }) {
+export function PluginsView({ onCreatePlugin }: { onCreatePlugin?: (goal?: string) => void }) {
   const { locale } = useI18n();
   const [plugins, setPlugins] = useState<InstalledPluginRecord[]>([]);
   const [marketplaces, setMarketplaces] = useState<PluginMarketplace[]>([]);
@@ -125,7 +125,7 @@ export function PluginsView({ onCreatePlugin }: { onCreatePlugin?: () => void })
           <button
             type="button"
             className="plugins-view__primary"
-            onClick={onCreatePlugin}
+            onClick={() => onCreatePlugin?.()}
             data-testid="plugins-create-button"
           >
             <Icon name="edit" size={13} />
@@ -197,6 +197,7 @@ export function PluginsView({ onCreatePlugin }: { onCreatePlugin?: () => void })
             pendingApplyId={pendingApplyId}
             onUse={(record) => void handleUsePlugin(record)}
             onOpenDetails={setDetailsRecord}
+            onCreatePlugin={onCreatePlugin}
             title="Community"
             subtitle="Import, create, export, refine, or extend Open Design — packaged as plugins. Pick one to load a starter prompt, or use @ search from Home."
             emptyMessage="No official plugins are registered yet. Restart the daemon if this looks wrong."
@@ -211,6 +212,7 @@ export function PluginsView({ onCreatePlugin }: { onCreatePlugin?: () => void })
             pendingApplyId={pendingApplyId}
             onUse={(record) => void handleUsePlugin(record)}
             onOpenDetails={setDetailsRecord}
+            onCreatePlugin={onCreatePlugin}
             title="My plugins"
             subtitle="Your imported workflow plugins. Tag them by intent so they appear beside the official Import, Create, Export, Refine, and Extend starters."
             emptyMessage="No user plugins yet. Use Create / Import to install from GitHub, a daemon-local path, an HTTPS archive, or a marketplace name."

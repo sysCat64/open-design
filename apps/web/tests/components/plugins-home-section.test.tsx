@@ -70,6 +70,11 @@ const sample: InstalledPluginRecord[] = [
   makePlugin({ id: 'f', mode: 'deck' }),
   makePlugin({ id: 'g', mode: 'scenario', taskKind: 'figma-migration' }),
   makePlugin({ id: 'h', mode: 'export', tags: ['export', 'react'] }),
+  makePlugin({ id: 'k', mode: 'export', tags: ['export', 'nextjs', 'react'] }),
+  makePlugin({ id: 'l', mode: 'export', tags: ['export', 'vuejs'] }),
+  makePlugin({ id: 'm', mode: 'export', tags: ['export', 'sveltejs'] }),
+  makePlugin({ id: 'n', mode: 'utility', tags: ['html-to-pptx'] }),
+  makePlugin({ id: 'o', mode: 'utility', tags: ['pdf-guide'] }),
   makePlugin({ id: 'i', mode: 'scenario', taskKind: 'tune-collab' }),
   makePlugin({ id: 'j', mode: 'scenario', taskKind: 'new-generation', tags: ['plugin-authoring'] }),
 ];
@@ -100,7 +105,7 @@ describe('PluginsHomeSection (category bar)', () => {
     expect(screen.queryByTestId('plugins-home-pill-category-hyperframes')).toBeNull();
     expect(screen.queryByTestId('plugins-home-pill-category-video')).toBeNull();
     expect(screen.queryByTestId('plugins-home-pill-category-image')).toBeNull();
-    expect(screen.queryByTestId('plugins-home-pill-category-react')).toBeNull();
+    expect(screen.queryByTestId('plugins-home-pill-category-reactjs')).toBeNull();
     expect(screen.getByTestId('plugins-home-row-subcategory-create')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-create-prototype')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-create-deck')).toBeTruthy();
@@ -167,11 +172,48 @@ describe('PluginsHomeSection (category bar)', () => {
     );
     fireEvent.click(screen.getByTestId('plugins-home-pill-category-export'));
     let items = within(screen.getByRole('list')).getAllByRole('listitem');
-    expect(items.map((i) => i.getAttribute('data-plugin-id'))).toEqual(['h']);
+    expect(items.map((i) => i.getAttribute('data-plugin-id')).sort()).toEqual([
+      'h',
+      'k',
+      'l',
+      'm',
+      'n',
+      'o',
+    ]);
+    expect(screen.getByTestId('plugins-home-row-subcategory-export')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-export-pptx')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-export-pdf')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-export-nextjs')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-export-reactjs')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-export-vuejs')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-export-sveltejs')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('plugins-home-pill-subcategory-export-pptx'));
+    items = within(screen.getByRole('list')).getAllByRole('listitem');
+    expect(items.map((i) => i.getAttribute('data-plugin-id'))).toEqual(['n']);
 
     fireEvent.click(screen.getByTestId('plugins-home-pill-category-import'));
     items = within(screen.getByRole('list')).getAllByRole('listitem');
     expect(items.map((i) => i.getAttribute('data-plugin-id'))).toEqual(['g']);
+  });
+
+  it('shows a contribution card for sparse workflow lanes and starts plugin creation', () => {
+    const onCreatePlugin = vi.fn();
+    render(
+      <PluginsHomeSection
+        plugins={sample}
+        loading={false}
+        activePluginId={null}
+        pendingApplyId={null}
+        onUse={() => {}}
+        onOpenDetails={() => {}}
+        onCreatePlugin={onCreatePlugin}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('plugins-home-pill-category-import'));
+    expect(screen.getByTestId('plugins-home-contribution-card')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('plugins-home-contribution-create'));
+    expect(onCreatePlugin).toHaveBeenCalledTimes(1);
   });
 
   it('subcategory pills filter within the active workflow lane', () => {
@@ -236,6 +278,11 @@ describe('PluginsHomeSection (category bar)', () => {
       'h',
       'i',
       'j',
+      'k',
+      'l',
+      'm',
+      'n',
+      'o',
     ]);
   });
 
