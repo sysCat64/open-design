@@ -157,6 +157,13 @@ export interface ComposeInput {
   // confuses the user.
   connectedExternalMcp?: ReadonlyArray<{ id: string; label?: string | undefined }>
     | undefined;
+  // Free-form instructions the user set at the global (user-level)
+  // settings panel. Injected after personal memory and before the
+  // project-level instructions.
+  userInstructions?: string | undefined;
+  // Free-form instructions the user set on this specific project.
+  // Injected after user-level instructions and before the design system.
+  projectInstructions?: string | undefined;
 }
 
 export function composeSystemPrompt({
@@ -179,6 +186,8 @@ export function composeSystemPrompt({
   critiqueSkill,
   connectedExternalMcp,
   streamFormat,
+  userInstructions,
+  projectInstructions,
 }: ComposeInput): string {
   // Discovery + philosophy goes FIRST so its hard rules ("emit a form on
   // turn 1", "branch on brand on turn 2", "TodoWrite on turn 3", run
@@ -208,6 +217,18 @@ export function composeSystemPrompt({
   if (memoryBody && memoryBody.trim().length > 0) {
     parts.push(
       `\n\n## Personal memory (auto-extracted from past chats)\n\nThe following facts have been sedimented from this user's previous conversations and edited in the settings panel. Treat them as preferences and context, NOT hard rules: when they collide with the active design system tokens, the brand wins; when they collide with the active skill's workflow, the skill wins. They are still authoritative for tone, voice, terminology, and what the user already told you about themselves and their goals — never re-ask the user about something already captured here.\n\n${memoryBody.trim()}`,
+    );
+  }
+
+  if (userInstructions && userInstructions.trim().length > 0) {
+    parts.push(
+      `\n\n## Custom instructions (user-level)\n\nThe user has set the following persistent instructions. Apply them as defaults to every project. When a project-level instruction below contradicts a point here, the project-level version wins.\n\n${userInstructions.trim()}`,
+    );
+  }
+
+  if (projectInstructions && projectInstructions.trim().length > 0) {
+    parts.push(
+      `\n\n## Custom instructions (project-level)\n\nThe user has set the following instructions for this specific project. They take precedence over user-level custom instructions whenever both address the same topic (e.g. if user-level says "use spaces" but project-level says "use tabs", use tabs).\n\n${projectInstructions.trim()}`,
     );
   }
 

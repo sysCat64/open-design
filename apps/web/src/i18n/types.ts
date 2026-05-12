@@ -352,6 +352,9 @@ export interface Dict {
   // Memory (auto-extracted personalization saved as on-disk markdown)
   'settings.memory': string;
   'settings.memoryHint': string;
+  'settings.customInstructionsTitle': string;
+  'settings.customInstructionsHint': string;
+  'settings.customInstructionsPlaceholder': string;
   'settings.memoryDescription': string;
   'settings.memoryEnabled': string;
   'settings.memoryDisabled': string;
@@ -881,6 +884,8 @@ export interface Dict {
   // Project view / chat pane / composer
   'project.backToProjects': string;
   'project.metaFreeform': string;
+  'project.customInstructions': string;
+  'project.customInstructionsPlaceholder': string;
   'project.resizeChatPanel': string;
   'chat.tabChat': string;
   'chat.tabComments': string;

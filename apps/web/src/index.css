@@ -769,6 +769,81 @@ code {
   background: color-mix(in srgb, var(--accent, #7c5cff) 12%, var(--bg-subtle));
 }
 
+/* Project instructions toggle & editor bar */
+.project-instructions-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: 4px;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.project-instructions-toggle:hover {
+  opacity: 1;
+  background: var(--bg-hover, rgba(128, 128, 128, 0.1));
+}
+.project-instructions-bar {
+  padding: 8px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary, var(--bg));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.project-instructions-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+.project-instructions-input {
+  width: 100%;
+  min-height: 48px;
+  max-height: 120px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+}
+.project-instructions-input:focus {
+  outline: none;
+  border-color: var(--accent, #646cff);
+}
+.project-instructions-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* Settings: custom instructions textarea */
+.custom-instructions-input {
+  width: 100%;
+  min-height: 80px;
+  max-height: 200px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+}
+.custom-instructions-input:focus {
+  outline: none;
+  border-color: var(--accent, #646cff);
+}
+
 .topbar {
   display: flex;
   align-items: center;

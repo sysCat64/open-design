@@ -2398,7 +2398,27 @@ export function SettingsDialog({
             <DesignSystemsSection cfg={cfg} setCfg={setCfg} />
           ) : null}
 
-          {activeSection === 'memory' ? <MemorySection /> : null}
+          {activeSection === 'memory' ? (
+            <>
+              <section className="settings-section">
+                <div className="section-head">
+                  <div>
+                    <h3>{t('settings.customInstructionsTitle')}</h3>
+                    <p className="hint">{t('settings.customInstructionsHint')}</p>
+                  </div>
+                </div>
+                <textarea
+                  className="custom-instructions-input"
+                  rows={5}
+                  maxLength={5000}
+                  placeholder={t('settings.customInstructionsPlaceholder')}
+                  value={cfg.customInstructions ?? ''}
+                  onChange={(e) => setCfg({ ...cfg, customInstructions: e.target.value || undefined })}
+                />
+              </section>
+              <MemorySection />
+            </>
+          ) : null}
 
           {activeSection === 'privacy' ? (
             <PrivacySection cfg={cfg} setCfg={setCfg} />

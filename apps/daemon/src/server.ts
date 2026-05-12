@@ -2980,6 +2980,18 @@ export async function startServer({
       console.warn('[memory] composeMemoryBody failed', err);
     }
 
+    // User-level custom instructions from app-config.json.
+    let userInstructions = '';
+    try {
+      const appCfg = await readAppConfig(RUNTIME_DATA_DIR);
+      if (appCfg.customInstructions) userInstructions = appCfg.customInstructions;
+    } catch (err) {
+      console.warn('[custom-instructions] readAppConfig failed', err);
+    }
+
+    // Project-level custom instructions from the projects table.
+    const projectInstructions = project?.customInstructions ?? '';
+
     let designSystemBody;
     let designSystemTitle;
     // Compiled (tokens.css + components.html) form of the active brand.
@@ -3090,6 +3102,8 @@ export async function startServer({
       connectedExternalMcp: Array.isArray(connectedExternalMcp)
         ? connectedExternalMcp
         : undefined,
+      userInstructions,
+      projectInstructions,
     });
     // The chat handler also needs to know where the active skill lives
     // on disk so it can stage a per-project copy of its side files

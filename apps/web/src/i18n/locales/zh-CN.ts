@@ -619,6 +619,8 @@ export const zhCN: Dict = {
 
   'project.backToProjects': '返回项目列表',
   'project.metaFreeform': '自由设计',
+  'project.customInstructions': '项目指令',
+  'project.customInstructionsPlaceholder': '此项目的指令（每条消息都会注入）…',
   'project.resizeChatPanel': '调整聊天面板大小',
   'chat.tabChat': '对话',
   'chat.tabComments': '评论',
@@ -1386,6 +1388,9 @@ export const zhCN: Dict = {
   // Memory (auto-extracted personalization saved as on-disk markdown)
   'settings.memory': '记忆',
   'settings.memoryHint': '从对话中自动沉淀的个性化信息',
+  'settings.customInstructionsTitle': '自定义指令',
+  'settings.customInstructionsHint': '应用于每个项目的持久指令。用于设定模型始终应遵循的偏好。',
+  'settings.customInstructionsPlaceholder': '例如："始终使用 TypeScript。优先使用函数式组件。保持回复简洁。"',
   'settings.memoryDescription': '自动从聊天中提取出的关于你的偏好和上下文的事实，以 Markdown 文件形式保存，并自动注入到每次对话中。',
   'settings.memoryEnabled': '已启用',
   'settings.memoryDisabled': '已关闭',

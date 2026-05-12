@@ -625,6 +625,8 @@ export const en: Dict = {
 
   'project.backToProjects': 'Back to projects',
   'project.metaFreeform': 'freeform',
+  'project.customInstructions': 'Project instructions',
+  'project.customInstructionsPlaceholder': 'Instructions for this project (injected on every message)…',
   'project.resizeChatPanel': 'Resize chat panel',
   'chat.tabChat': 'Chat',
   'chat.tabComments': 'Comments',
@@ -1421,6 +1423,9 @@ export const en: Dict = {
   // Memory (auto-extracted personalization saved as on-disk markdown)
   'settings.memory': 'Memory',
   'settings.memoryHint': 'Personal facts auto-extracted from chats',
+  'settings.customInstructionsTitle': 'Custom instructions',
+  'settings.customInstructionsHint': 'Persistent instructions applied to every project. Use this to set preferences the model should always follow.',
+  'settings.customInstructionsPlaceholder': 'e.g. "Always use TypeScript. Prefer functional components. Keep responses concise."',
   'settings.memoryDescription': 'Auto-extracted facts about you and your preferences. Saved as Markdown files and folded into every chat.',
   'settings.memoryEnabled': 'Enabled',
   'settings.memoryDisabled': 'Disabled',
