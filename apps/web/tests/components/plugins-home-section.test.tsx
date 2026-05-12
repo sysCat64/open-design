@@ -96,6 +96,8 @@ describe('PluginsHomeSection (category bar)', () => {
     expect(screen.getByTestId('plugins-home-pill-category-import')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-category-create')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-category-export')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-category-share')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-category-deploy')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-category-refine')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-category-extend')).toBeTruthy();
     expect(screen.queryByTestId('plugins-home-pill-category-from-figma')).toBeNull();
@@ -113,6 +115,7 @@ describe('PluginsHomeSection (category bar)', () => {
     expect(screen.getByTestId('plugins-home-pill-subcategory-create-hyperframes')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-create-image')).toBeTruthy();
     expect(screen.getByTestId('plugins-home-pill-subcategory-create-video')).toBeTruthy();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-create-audio')).toBeTruthy();
     // Surface / Type / Scenario rows and the More disclosure are gone.
     expect(screen.queryByTestId('plugins-home-row-surface')).toBeNull();
     expect(screen.queryByTestId('plugins-home-row-type')).toBeNull();
@@ -120,7 +123,7 @@ describe('PluginsHomeSection (category bar)', () => {
     expect(screen.queryByTestId('plugins-home-more')).toBeNull();
   });
 
-  it('omits curated buckets that have zero plugins', () => {
+  it('keeps planned subcategory buckets visible even when they have zero plugins', () => {
     render(
       <PluginsHomeSection
         plugins={sample}
@@ -131,8 +134,7 @@ describe('PluginsHomeSection (category bar)', () => {
         onOpenDetails={() => {}}
       />,
     );
-    // Concrete child buckets are intentionally not rendered as tabs.
-    expect(screen.queryByTestId('plugins-home-pill-category-audio')).toBeNull();
+    expect(screen.getByTestId('plugins-home-pill-subcategory-create-audio')).toBeTruthy();
   });
 
   it('filters by a category pill when clicked', () => {
@@ -213,7 +215,38 @@ describe('PluginsHomeSection (category bar)', () => {
     fireEvent.click(screen.getByTestId('plugins-home-pill-category-import'));
     expect(screen.getByTestId('plugins-home-contribution-card')).toBeTruthy();
     fireEvent.click(screen.getByTestId('plugins-home-contribution-create'));
-    expect(onCreatePlugin).toHaveBeenCalledTimes(1);
+    expect(onCreatePlugin).toHaveBeenCalledWith(
+      expect.stringContaining('imports a source into a project'),
+    );
+  });
+
+  it('shows contribution placeholders for planned empty lanes', () => {
+    const onCreatePlugin = vi.fn();
+    render(
+      <PluginsHomeSection
+        plugins={sample}
+        loading={false}
+        activePluginId={null}
+        pendingApplyId={null}
+        onUse={() => {}}
+        onOpenDetails={() => {}}
+        onCreatePlugin={onCreatePlugin}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('plugins-home-pill-category-deploy'));
+    expect(screen.getByTestId('plugins-home-contribution-card').textContent).toContain(
+      'Contribute a Deploy plugin',
+    );
+    expect(screen.getByTestId('plugins-home-pill-subcategory-deploy-vercel')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('plugins-home-pill-subcategory-deploy-vercel'));
+    expect(screen.getByTestId('plugins-home-contribution-card').textContent).toContain(
+      'Contribute a Vercel plugin',
+    );
+    fireEvent.click(screen.getByTestId('plugins-home-contribution-create'));
+    expect(onCreatePlugin).toHaveBeenCalledWith(
+      expect.stringContaining('deploys an accepted web artifact to Vercel'),
+    );
   });
 
   it('subcategory pills filter within the active workflow lane', () => {

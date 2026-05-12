@@ -31,7 +31,7 @@ interface Props {
   pendingApplyId: string | null;
   onUse: (record: InstalledPluginRecord) => void;
   onOpenDetails: (record: InstalledPluginRecord) => void;
-  onCreatePlugin?: () => void;
+  onCreatePlugin?: (goal?: string) => void;
   title?: string;
   subtitle?: string;
   emptyMessage?: string;
@@ -67,6 +67,12 @@ export function PluginsHomeSection({
     setQuery,
     totalVisible,
   } = usePluginFacets({ plugins });
+  const contributionTarget = onCreatePlugin
+    ? resolveContributionTarget(catalog, selection)
+    : null;
+  const showContributionCard =
+    contributionTarget !== null &&
+    shouldShowContributionCard(filtered.length, selection.category);
 
   return (
     <section className="plugins-home" data-testid="plugins-home-section">
@@ -122,7 +128,7 @@ export function PluginsHomeSection({
             ) : null}
           </div>
 
-          {filtered.length === 0 ? (
+          {filtered.length === 0 && !showContributionCard ? (
             <div className="plugins-home__empty plugins-home__empty--filtered">
               No plugins match the current filters.{' '}
               <button
@@ -147,10 +153,11 @@ export function PluginsHomeSection({
                   onOpenDetails={onOpenDetails}
                 />
               ))}
-              {onCreatePlugin && shouldShowContributionCard(filtered.length, selection.category) ? (
+              {showContributionCard && contributionTarget ? (
                 <ContributionCard
-                  label={resolveContributionLabel(catalog, selection)}
-                  onCreatePlugin={onCreatePlugin}
+                  label={contributionTarget.label}
+                  starterPrompt={contributionTarget.starterPrompt}
+                  onCreatePlugin={() => onCreatePlugin?.(contributionTarget.starterPrompt)}
                 />
               ) : null}
             </div>
@@ -165,25 +172,27 @@ function shouldShowContributionCard(count: number, category: string | null): boo
   return Boolean(category) && count < CONTRIBUTION_CARD_THRESHOLD;
 }
 
-function resolveContributionLabel(
+function resolveContributionTarget(
   catalog: ReturnType<typeof usePluginFacets>['catalog'],
   selection: ReturnType<typeof usePluginFacets>['selection'],
-): string {
-  if (!selection.category) return 'this category';
+): FacetOption | null {
+  if (!selection.category) return null;
   if (selection.subcategory) {
     const sub = catalog.subcategory[selection.category]?.find(
       (opt) => opt.slug === selection.subcategory,
     );
-    if (sub) return sub.label;
+    if (sub) return sub;
   }
-  return catalog.category.find((opt) => opt.slug === selection.category)?.label ?? 'this category';
+  return catalog.category.find((opt) => opt.slug === selection.category) ?? null;
 }
 
 function ContributionCard({
   label,
+  starterPrompt,
   onCreatePlugin,
 }: {
   label: string;
+  starterPrompt: string;
   onCreatePlugin: () => void;
 }) {
   return (
@@ -201,6 +210,9 @@ function ContributionCard({
           <p>
             This area is still sparse. Turn your workflow into a reusable
             plugin, add it to My plugins, then share it with the community.
+          </p>
+          <p className="plugins-home__contribute-template">
+            Starter: {starterPrompt}
           </p>
         </div>
         <button

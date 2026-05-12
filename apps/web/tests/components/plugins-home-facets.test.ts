@@ -69,6 +69,12 @@ describe('extractCategories', () => {
       extractCategories(fixture({ id: 'pptx-export', tags: ['html-to-pptx'], od: { mode: 'utility' } })),
     ).toEqual(['export']);
     expect(
+      extractCategories(fixture({ id: 'vercel-deploy', tags: ['deploy', 'vercel'], od: { mode: 'utility' } })),
+    ).toEqual(['deploy']);
+    expect(
+      extractCategories(fixture({ id: 'slack-share', tags: ['share', 'slack'], od: { mode: 'utility' } })),
+    ).toEqual(['share']);
+    expect(
       extractCategories(fixture({ id: 'tune', od: { taskKind: 'tune-collab', mode: 'scenario' } })),
     ).toEqual(['refine']);
     expect(
@@ -159,38 +165,79 @@ describe('buildFacetCatalog', () => {
       'import',
       'create',
       'export',
+      'share',
+      'deploy',
       'refine',
       'extend',
     ]);
     expect(catalog.category.find((o) => o.slug === 'create')?.count).toBe(6);
     expect(catalog.category.find((o) => o.slug === 'import')?.count).toBe(1);
     expect(catalog.category.find((o) => o.slug === 'export')?.count).toBe(6);
+    expect(catalog.category.find((o) => o.slug === 'share')?.count).toBe(0);
+    expect(catalog.category.find((o) => o.slug === 'deploy')?.count).toBe(0);
     expect(catalog.category.find((o) => o.slug === 'refine')?.count).toBe(1);
     expect(catalog.category.find((o) => o.slug === 'extend')?.count).toBe(1);
     expect((catalog.subcategory.create ?? []).map((o) => o.slug)).toEqual([
+      'prototype',
       'deck',
       'design-system',
       'hyperframes',
       'image',
       'video',
+      'audio',
     ]);
-    expect((catalog.subcategory.import ?? []).map((o) => o.slug)).toEqual(['from-figma']);
+    expect((catalog.subcategory.import ?? []).map((o) => o.slug)).toEqual([
+      'from-figma',
+      'from-github',
+      'from-code',
+      'from-url',
+      'from-screenshot',
+      'from-pdf',
+      'from-pptx',
+      'from-framer',
+      'from-webflow',
+    ]);
     expect((catalog.subcategory.export ?? []).map((o) => o.slug)).toEqual([
       'pptx',
       'pdf',
+      'html',
+      'zip',
+      'markdown',
+      'figma',
       'nextjs',
       'reactjs',
       'vuejs',
       'sveltejs',
+      'astro',
+      'angular',
+      'tailwind',
+    ]);
+    expect((catalog.subcategory.deploy ?? []).map((o) => o.slug)).toEqual([
+      'vercel',
+      'cloudflare',
+      'netlify',
+      'github-pages',
+      'fly-io',
+      'render',
+      'docker',
     ]);
   });
 
-  it('returns an empty category axis when no plugin matches a curated bucket', () => {
+  it('keeps planned category and subcategory axes when no plugin matches', () => {
     const catalog = buildFacetCatalog([
       fixture({ id: 'a', od: { mode: 'utility' } }),
       fixture({ id: 'b', od: { mode: 'template' } }),
     ]);
-    expect(catalog.category).toEqual([]);
+    expect(catalog.category.map((o) => [o.slug, o.count])).toEqual([
+      ['import', 0],
+      ['create', 0],
+      ['export', 0],
+      ['share', 0],
+      ['deploy', 0],
+      ['refine', 0],
+      ['extend', 0],
+    ]);
+    expect(catalog.subcategory.deploy?.find((o) => o.slug === 'vercel')?.count).toBe(0);
   });
 });
 
