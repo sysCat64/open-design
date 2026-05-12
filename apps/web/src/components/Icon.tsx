@@ -23,6 +23,7 @@ type IconName =
   | 'folder'
   | 'github'
   | 'grid'
+  | 'help-circle'
   | 'history'
   | 'home'
   | 'image'
@@ -234,6 +235,14 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
           <rect x="14" y="3" width="7" height="7" rx="1" />
           <rect x="3" y="14" width="7" height="7" rx="1" />
           <rect x="14" y="14" width="7" height="7" rx="1" />
+        </svg>
+      );
+    case 'help-circle':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <path d="M12 17h.01" />
         </svg>
       );
     case 'history':

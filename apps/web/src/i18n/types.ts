@@ -320,6 +320,8 @@ export interface Dict {
   'entry.openSettingsAria': string;
   'entry.resizeAria': string;
   'entry.loadingWorkspace': string;
+  'entry.useEverywhereTitle': string;
+  'entry.useEverywhereAria': string;
   // Left nav rail (icon-only) — surface labels also serve as tooltips
   'entry.navNewProject': string;
   'entry.navHome': string;

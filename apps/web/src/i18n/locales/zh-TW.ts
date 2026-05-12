@@ -164,6 +164,8 @@ export const zhTW: Dict = {
   'entry.openSettingsAria': '開啟設定',
   'entry.resizeAria': '調整側邊欄寬度',
   'entry.loadingWorkspace': '正在載入工作區…',
+  'entry.useEverywhereTitle': '隨處使用',
+  'entry.useEverywhereAria': '開啟「隨處使用」指南（CLI、MCP、HTTP、Skills）',
   'entry.navNewProject': '新建專案',
   'entry.navHome': '主頁',
   'entry.navProjects': '專案',

@@ -2,12 +2,15 @@
 //
 // Renders a narrow icon-only column. The first slot is the brand
 // logo (clicking navigates to home), followed by four primary
-// actions (new project, home, projects, design systems). The
-// rail no longer carries any footer chrome — language switching
-// and other account-scoped controls live behind the floating
-// settings cog in the top-right corner of the main content.
+// actions (new project, home, projects, design systems). A small
+// help launcher sits at the bottom and opens a popover with the
+// canonical "ask for help / submit a feature / what's new / download
+// desktop" external links. Language switching and other account-
+// scoped controls live behind the floating settings cog in the
+// top-right corner of the main content.
 
 import type { ReactNode } from 'react';
+import { EntryHelpMenu } from './EntryHelpMenu';
 import { Icon } from './Icon';
 import { useT } from '../i18n';
 
@@ -22,13 +25,13 @@ interface Props {
 interface NavButtonProps {
   active?: boolean;
   ariaLabel: string;
-  title: string;
+  tooltip: string;
   onClick: () => void;
   testId?: string;
   children: ReactNode;
 }
 
-function NavButton({ active, ariaLabel, title, onClick, testId, children }: NavButtonProps) {
+function NavButton({ active, ariaLabel, tooltip, onClick, testId, children }: NavButtonProps) {
   return (
     <button
       type="button"
@@ -36,7 +39,7 @@ function NavButton({ active, ariaLabel, title, onClick, testId, children }: NavB
       onClick={onClick}
       aria-label={ariaLabel}
       aria-current={active ? 'page' : undefined}
-      title={title}
+      data-tooltip={tooltip}
       {...(testId ? { 'data-testid': testId } : {})}
     >
       {children}
@@ -56,7 +59,7 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
           className="entry-nav-rail__logo"
           onClick={() => onViewChange('home')}
           aria-label={brandLabel}
-          title={brandLabel}
+          data-tooltip={brandLabel}
           data-testid="entry-nav-logo"
         >
           <img
@@ -67,8 +70,8 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
           />
         </button>
         <NavButton
-          ariaLabel="New project"
-          title="New project"
+          ariaLabel={t('entry.navNewProject')}
+          tooltip={t('entry.navNewProject')}
           onClick={onNewProject}
           testId="entry-nav-new-project"
         >
@@ -76,8 +79,8 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
         </NavButton>
         <NavButton
           active={view === 'home'}
-          ariaLabel="Home"
-          title="Home"
+          ariaLabel={t('entry.navHome')}
+          tooltip={t('entry.navHome')}
           onClick={() => onViewChange('home')}
           testId="entry-nav-home"
         >
@@ -85,8 +88,8 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
         </NavButton>
         <NavButton
           active={view === 'projects'}
-          ariaLabel="Projects"
-          title="Projects"
+          ariaLabel={t('entry.navProjects')}
+          tooltip={t('entry.navProjects')}
           onClick={() => onViewChange('projects')}
           testId="entry-nav-projects"
         >
@@ -94,13 +97,16 @@ export function EntryNavRail({ view, onViewChange, onNewProject }: Props) {
         </NavButton>
         <NavButton
           active={view === 'design-systems'}
-          ariaLabel="Design systems"
-          title="Design systems"
+          ariaLabel={t('entry.navDesignSystems')}
+          tooltip={t('entry.navDesignSystems')}
           onClick={() => onViewChange('design-systems')}
           testId="entry-nav-design-systems"
         >
           <Icon name="palette" size={18} />
         </NavButton>
+      </div>
+      <div className="entry-nav-rail__footer">
+        <EntryHelpMenu />
       </div>
     </nav>
   );

@@ -166,6 +166,8 @@ export const en: Dict = {
   'entry.openSettingsAria': 'Open settings',
   'entry.resizeAria': 'Resize sidebar',
   'entry.loadingWorkspace': 'Loading workspace…',
+  'entry.useEverywhereTitle': 'Use everywhere',
+  'entry.useEverywhereAria': 'Open the Use Everywhere guide (CLI, MCP, HTTP, Skills)',
   'entry.navNewProject': 'New project',
   'entry.navHome': 'Home',
   'entry.navProjects': 'Projects',

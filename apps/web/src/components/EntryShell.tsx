@@ -30,12 +30,14 @@ import { DesignsTab } from './DesignsTab';
 import { DesignSystemPreviewModal } from './DesignSystemPreviewModal';
 import { DesignSystemsTab } from './DesignSystemsTab';
 import { EntryNavRail, type EntryView as EntryViewKind } from './EntryNavRail';
+import { GithubStarBadge } from './GithubStarBadge';
 import { HomeView } from './HomeView';
 import { Icon } from './Icon';
 import { InlineModelSwitcher } from './InlineModelSwitcher';
 import { NewProjectModal } from './NewProjectModal';
 import type { CreateInput } from './NewProjectPanel';
 import type { PluginLoopSubmit } from './PluginLoopHome';
+import { UseEverywhereModal } from './UseEverywhereModal';
 
 // Default scenario plugin for each project kind. The modal-based
 // create flow no longer surfaces a plugin picker — every submission
@@ -102,6 +104,7 @@ interface Props {
       | 'execution'
       | 'media'
       | 'composio'
+      | 'integrations'
       | 'language'
       | 'appearance'
       | 'notifications'
@@ -151,7 +154,16 @@ export function EntryShell({
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [languageExpanded, setLanguageExpanded] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [useEverywhereOpen, setUseEverywhereOpen] = useState(false);
   const avatarMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // The agent-handoff guide substitutes 127.0.0.1:7456 in every snippet
+  // with whatever URL the user actually has open, so the curl examples
+  // they paste into Hermes / openclaw / Cursor work without manual
+  // editing. Falls back to the documented default when window is
+  // unavailable (SSR / unit-test render).
+  const liveDaemonUrl =
+    typeof window !== 'undefined' ? window.location.origin : undefined;
 
   function changeView(next: EntryViewKind) {
     navigate({ kind: 'home', view: next });
@@ -313,6 +325,20 @@ export function EntryShell({
             className="avatar-item"
             onClick={() => {
               setAvatarMenuOpen(false);
+              setUseEverywhereOpen(true);
+            }}
+            data-testid="entry-avatar-use-everywhere"
+          >
+            <span className="avatar-item-icon" aria-hidden>
+              <Icon name="link" size={14} />
+            </span>
+            <span>{t('entry.useEverywhereTitle')}</span>
+          </button>
+          <button
+            type="button"
+            className="avatar-item"
+            onClick={() => {
+              setAvatarMenuOpen(false);
               onOpenSettings();
             }}
           >
@@ -336,6 +362,7 @@ export function EntryShell({
         />
         <main className="entry-main entry-main--scroll">
           <div className="entry-main__topbar">
+            <GithubStarBadge />
             <InlineModelSwitcher
               config={config}
               agents={agents}
@@ -347,6 +374,21 @@ export function EntryShell({
               onApiModelChange={onApiModelChange}
               onOpenSettings={onOpenSettings}
             />
+            <button
+              type="button"
+              className="use-everywhere-chip"
+              onClick={() => setUseEverywhereOpen(true)}
+              title={t('entry.useEverywhereTitle')}
+              aria-label={t('entry.useEverywhereAria')}
+              data-testid="entry-use-everywhere-button"
+            >
+              <span className="use-everywhere-chip__icon" aria-hidden>
+                <Icon name="link" size={13} />
+              </span>
+              <span className="use-everywhere-chip__label">
+                {t('entry.useEverywhereTitle')}
+              </span>
+            </button>
             {avatarMenu}
           </div>
           <div
@@ -424,6 +466,16 @@ export function EntryShell({
         onOpenConnectorsTab={() => onOpenSettings('composio')}
         onClose={() => setNewProjectOpen(false)}
       />
+      {useEverywhereOpen ? (
+        <UseEverywhereModal
+          onClose={() => setUseEverywhereOpen(false)}
+          onOpenSettings={() => {
+            setUseEverywhereOpen(false);
+            onOpenSettings('integrations');
+          }}
+          {...(liveDaemonUrl ? { daemonUrl: liveDaemonUrl } : {})}
+        />
+      ) : null}
     </div>
   );
 }
