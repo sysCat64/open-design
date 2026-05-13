@@ -699,7 +699,10 @@ export function applyFacetSelection(
 
 export function isFeaturedPlugin(record: InstalledPluginRecord): boolean {
   const od = (record.manifest?.od ?? {}) as Record<string, unknown>;
-  return od.featured === true;
+  return (
+    od.featured === true ||
+    (typeof od.featured === 'number' && Number.isFinite(od.featured))
+  );
 }
 
 // Free-text search across the obvious user-facing surface area: title,

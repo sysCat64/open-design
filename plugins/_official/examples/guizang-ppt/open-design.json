@@ -37,6 +37,7 @@
     "kind": "scenario",
     "taskKind": "new-generation",
     "mode": "deck",
+    "featured": 9,
     "scenario": "marketing",
     "surface": "web",
     "preview": {

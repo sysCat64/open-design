@@ -9,7 +9,7 @@
 // The score is a deterministic linear sum of signals already
 // present on the manifest:
 //
-//   featured flag                          → +1000  (curator pick wins)
+//   featured flag/rank                     → +1000+ (curator pick wins)
 //   has video preview                      →  +700  (motion is rare; lead with it)
 //   has image poster                       →  +500
 //   has both video + poster                →  +200  (extra polish bonus)
@@ -79,9 +79,11 @@ function kindOf(record: InstalledPluginRecord): string {
   return typeof od?.kind === 'string' ? od.kind.toLowerCase() : '';
 }
 
-function isFeatured(record: InstalledPluginRecord): boolean {
+function featuredRank(record: InstalledPluginRecord): number | null {
   const od = (record.manifest?.od ?? {}) as Record<string, unknown>;
-  return od.featured === true;
+  if (od.featured === true) return 0;
+  if (typeof od.featured !== 'number' || !Number.isFinite(od.featured)) return null;
+  return Math.max(0, od.featured);
 }
 
 function richTagCount(record: InstalledPluginRecord): number {
@@ -95,7 +97,8 @@ function richTagCount(record: InstalledPluginRecord): number {
 export function pluginVisualScore(record: InstalledPluginRecord): number {
   let score = 0;
 
-  if (isFeatured(record)) score += 1000;
+  const rank = featuredRank(record);
+  if (rank !== null) score += 1000 + Math.max(0, 100 - rank);
 
   const preview = readPreview(record);
   const hasPoster =

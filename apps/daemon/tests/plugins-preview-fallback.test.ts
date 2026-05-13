@@ -62,8 +62,12 @@ beforeEach(async () => {
   await mkdir(path.join(folder, 'assets'), { recursive: true });
   // Deliberately omit ./index.html so the declared entry is stale.
   await writeFile(
+    path.join(folder, 'assets', 'template.html'),
+    '<!DOCTYPE html><title>template</title><main id="deck"><!-- SLIDES_HERE --></main>',
+  );
+  await writeFile(
     path.join(folder, 'assets', 'example-slides.html'),
-    '<!DOCTYPE html><title>fallback</title><p>fallback body via assets</p>',
+    '<section class="slide hero dark"><p>fallback body via assets</p></section>',
   );
   await writeFile(
     path.join(folder, 'open-design.json'),
@@ -113,7 +117,7 @@ afterEach(async () => {
 });
 
 describe('GET /api/plugins/:id/preview — fallback chain', () => {
-  it('falls back to od.context.assets[] HTML when the declared entry is missing', async () => {
+  it('assembles example-slides fragments with the sibling template when the declared entry is missing', async () => {
     const resp = await fetch(`${baseUrl}/api/plugins/${PLUGIN_ID}/preview`);
     if (resp.status !== 200) {
       const text = await resp.text();
@@ -121,6 +125,8 @@ describe('GET /api/plugins/:id/preview — fallback chain', () => {
     }
     expect(resp.headers.get('content-type')).toMatch(/text\/html/);
     const body = await resp.text();
+    expect(body).toContain('<main id="deck">');
     expect(body).toContain('fallback body via assets');
+    expect(body).toContain('Preview fallback fixture | Open Design Example');
   });
 });

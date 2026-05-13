@@ -4354,6 +4354,7 @@ export async function startServer({
       const fsp = await import('node:fs/promises');
       const root = path.resolve(plugin.fsPath) + path.sep;
       let resolved: string | null = null;
+      let resolvedRel: string | null = null;
       for (const rel of candidates) {
         if (rel.includes('..') || rel.startsWith('/') || rel.includes('\0')) continue;
         const full = path.resolve(plugin.fsPath, rel);
@@ -4372,6 +4373,7 @@ export async function startServer({
             return;
           }
           resolved = full;
+          resolvedRel = rel;
           break;
         } catch {
           // try next candidate
@@ -4381,13 +4383,44 @@ export async function startServer({
         res.status(404).json({ error: 'preview not found' });
         return;
       }
-      const buf = await fsp.readFile(resolved);
+      let contentPath = resolved;
+      let buf = await fsp.readFile(resolved);
+      if (resolvedRel && /(^|\/)example-slides\.html$/i.test(resolvedRel)) {
+        const templateRel = resolvedRel.replace(
+          /(^|\/)example-slides\.html$/i,
+          '$1template.html',
+        );
+        const templateFull = path.resolve(plugin.fsPath, templateRel);
+        const templateInside =
+          (templateFull + path.sep).startsWith(root) ||
+          templateFull === path.resolve(plugin.fsPath);
+        if (templateInside) {
+          try {
+            const st = await fsp.stat(templateFull);
+            const lst = await fsp.lstat(templateFull);
+            if (!lst.isSymbolicLink() && st.isFile() && st.size <= 5 * 1024 * 1024) {
+              const title =
+                typeof plugin.title === 'string'
+                  ? plugin.title
+                  : typeof plugin.manifest?.title === 'string'
+                    ? plugin.manifest.title
+                    : req.params.id;
+              const tplHtml = await fsp.readFile(templateFull, 'utf8');
+              const slidesHtml = buf.toString('utf8');
+              buf = Buffer.from(assembleExample(tplHtml, slidesHtml, title), 'utf8');
+              contentPath = templateFull;
+            }
+          } catch {
+            // Keep the raw fallback if the companion template is missing.
+          }
+        }
+      }
       res.setHeader(
         'Content-Security-Policy',
         "default-src 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'none'; frame-ancestors 'self'",
       );
       res.setHeader('X-Content-Type-Options', 'nosniff');
-      const ext = path.extname(resolved).toLowerCase();
+      const ext = path.extname(contentPath).toLowerCase();
       const ct =
         ext === '.html' ? 'text/html; charset=utf-8'
         : ext === '.js'  ? 'application/javascript; charset=utf-8'
@@ -4425,6 +4458,12 @@ export async function startServer({
   // `assets/template.html`. Returning 404 in that case lit up white
   // tiles in the home gallery, so the candidates list always extends
   // past the declared entry to walk a curated fallback chain.
+  //
+  // `assets/example-slides.html` is a special case: for guizang-ppt it
+  // is intentionally only the slide fragment. The old skill preview
+  // assembled it into `assets/template.html` at request time; the plugin
+  // route mirrors that so the marketplace card keeps the WebGL/e-ink
+  // magazine treatment instead of rendering unstyled fragments.
   function collectPluginPreviewCandidates(plugin: unknown): string[] {
     const candidates: string[] = [];
     const seen = new Set<string>();

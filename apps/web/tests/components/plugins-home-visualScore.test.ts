@@ -54,6 +54,12 @@ describe('pluginVisualScore', () => {
     );
   });
 
+  it('uses numeric featured ranks to order curated picks', () => {
+    const lead = fixture({ id: 'lead', od: { featured: 2 } });
+    const later = fixture({ id: 'later', od: { featured: 19 } });
+    expect(pluginVisualScore(lead)).toBeGreaterThan(pluginVisualScore(later));
+  });
+
   it('ranks media-rich plugins above plain scenarios', () => {
     const text = fixture({ id: 'text' });
     const deckHtml = fixture({

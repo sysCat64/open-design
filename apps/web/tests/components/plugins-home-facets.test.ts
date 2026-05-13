@@ -295,8 +295,9 @@ describe('applyFacetSelection', () => {
 });
 
 describe('isFeaturedPlugin', () => {
-  it('returns true only for od.featured === true (strict)', () => {
+  it('returns true for boolean featured picks and numeric curator ranks', () => {
     expect(isFeaturedPlugin(fixture({ id: 'a', od: { featured: true } }))).toBe(true);
+    expect(isFeaturedPlugin(fixture({ id: 'ranked', od: { featured: 4 } }))).toBe(true);
     expect(isFeaturedPlugin(fixture({ id: 'b', od: { featured: 'true' } }))).toBe(false);
     expect(isFeaturedPlugin(fixture({ id: 'c' }))).toBe(false);
   });
