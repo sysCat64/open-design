@@ -71,6 +71,7 @@ import type {
   ChatAttachment,
   ChatCommentAttachment,
   ChatMessage,
+  ChatMessageFeedbackChange,
   Conversation,
   DesignSystemSummary,
   OpenTabsState,
@@ -78,6 +79,7 @@ import type {
   PreviewComment,
   PreviewCommentTarget,
   ProjectFile,
+  ProjectPlatform,
   ProjectTemplate,
   LiveArtifactEventItem,
   LiveArtifactSummary,
@@ -94,6 +96,7 @@ import { AvatarMenu } from './AvatarMenu';
 import { ChatPane } from './ChatPane';
 import { decideAutoOpenAfterWrite } from './auto-open-file';
 import { FileWorkspace } from './FileWorkspace';
+import { Icon } from './Icon';
 import { CenteredLoader } from './Loading';
 import { ProjectActionsToolbar } from './ProjectActionsToolbar';
 import { Toast } from './Toast';
@@ -239,6 +242,56 @@ function projectEventToAgentEvent(evt: ProjectEvent): LiveArtifactEventItem['eve
   };
 }
 
+const PLATFORM_LABELS: Record<ProjectPlatform, string> = {
+  auto: 'Auto',
+  responsive: 'Responsive web',
+  'web-desktop': 'Desktop web',
+  'mobile-ios': 'iOS app',
+  'mobile-android': 'Android app',
+  tablet: 'Tablet app',
+  'desktop-app': 'Desktop app',
+};
+
+function labelProjectPlatform(platform: ProjectPlatform | string): string {
+  return PLATFORM_LABELS[platform as ProjectPlatform] ?? platform;
+}
+
+function projectTargetPlatforms(project: Project): string[] {
+  const targets = project.metadata?.platformTargets;
+  if (Array.isArray(targets) && targets.length > 0) {
+    return [...new Set(targets)].map(labelProjectPlatform);
+  }
+  if (project.metadata?.platform) {
+    return [labelProjectPlatform(project.metadata.platform)];
+  }
+  return [];
+}
+
+type ProjectFeatureChip = {
+  label: string;
+  title: string;
+  tone: 'landing' | 'widgets';
+};
+
+function projectFeatureChips(project: Project): ProjectFeatureChip[] {
+  const chips: ProjectFeatureChip[] = [];
+  if (project.metadata?.includeLandingPage) {
+    chips.push({
+      label: 'Landing page',
+      title: 'Landing page companion surface is enabled for this project',
+      tone: 'landing',
+    });
+  }
+  if (project.metadata?.includeOsWidgets) {
+    chips.push({
+      label: 'OS widgets',
+      title: 'Home-screen, lock-screen, or quick-access OS widget surfaces are enabled',
+      tone: 'widgets',
+    });
+  }
+  return chips;
+}
+
 export function ProjectView({
   project,
   routeFileName,
@@ -283,6 +336,14 @@ export function ProjectView({
   const [liveArtifacts, setLiveArtifacts] = useState<LiveArtifactSummary[]>([]);
   const [liveArtifactEvents, setLiveArtifactEvents] = useState<LiveArtifactEventItem[]>([]);
   const [workspaceFocused, setWorkspaceFocused] = useState(false);
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const [instructionsDraft, setInstructionsDraft] = useState(project.customInstructions ?? '');
+  const [instructionsSaving, setInstructionsSaving] = useState(false);
+  // Keep the draft in sync with the server value when the editor is closed
+  // (e.g. after an external update or project switch).
+  useEffect(() => {
+    if (!instructionsOpen) setInstructionsDraft(project.customInstructions ?? '');
+  }, [project.customInstructions, instructionsOpen]);
   // PR #974 round 7 (mrcfps @ useDesignMdState.ts:131): counter that
   // bumps on file-changed SSE events, live_artifact* events, and the
   // chat streaming-completion edge so the staleness chip stays in sync
@@ -669,8 +730,11 @@ export function ProjectView({
   // mount we also do an initial pull so attachments staged before the
   // agent has written anything still see the user's pasted images.
   useEffect(() => {
-    if (!daemonLive) return;
-    void refreshWorkspaceItems();
+    void refreshWorkspaceItems().catch(() => {
+      // The daemon probe can briefly lag behind a just-started local
+      // runtime. Retry when daemonLive flips or the explicit refresh key
+      // changes instead of leaving the project view in its empty shell.
+    });
   }, [daemonLive, refreshWorkspaceItems, filesRefresh]);
 
   // Live-reload: when the daemon's chokidar watcher reports a file change,
@@ -711,7 +775,9 @@ export function ProjectView({
   const lastSyncedFileRef = useRef<string | null>(null);
   useEffect(() => {
     const target = openTabsState.active && (
-      projectFileNames.has(openTabsState.active) || isLiveArtifactTabId(openTabsState.active)
+      openTabsState.tabs.includes(openTabsState.active)
+      || projectFileNames.has(openTabsState.active)
+      || isLiveArtifactTabId(openTabsState.active)
     )
       ? openTabsState.active
       : null;
@@ -812,15 +878,19 @@ export function ProjectView({
       metadata: project.metadata,
       template,
       streamFormat: config.mode === 'api' ? 'plain' : undefined,
+      userInstructions: config.customInstructions,
+      projectInstructions: project.customInstructions,
     });
   }, [
     project.skillId,
     project.designSystemId,
     project.metadata,
+    project.customInstructions,
     skills,
     designTemplates,
     designSystems,
     config.mode,
+    config.customInstructions,
   ]);
 
   const persistMessage = useCallback(
@@ -865,6 +935,37 @@ export function ProjectView({
       });
     },
     [project.id, activeConversationId],
+  );
+
+  const handleAssistantFeedback = useCallback(
+    (assistantMessage: ChatMessage, change: ChatMessageFeedbackChange) => {
+      const now = Date.now();
+      updateMessageById(
+        assistantMessage.id,
+        (prev) =>
+          change
+            ? {
+                ...prev,
+                feedback: {
+                  rating: change.rating,
+                  reasonCodes: change.reasonCodes,
+                  customReason: change.customReason,
+                  reasonsSubmittedAt: change.reasonsSubmittedAt,
+                  createdAt:
+                    prev.feedback?.rating === change.rating
+                      ? prev.feedback.createdAt
+                      : now,
+                  updatedAt: now,
+                },
+              }
+            : {
+                ...prev,
+                feedback: undefined,
+              },
+        true,
+      );
+    },
+    [updateMessageById],
   );
 
   const appendAssistantErrorEvent = useCallback(
@@ -1705,18 +1806,17 @@ export function ProjectView({
         // this for tool-emitted files; this handles the artifact-tag path.
         requestOpenFile(file.name);
       } else {
-        // writeProjectTextFile collapses non-OK responses (including
-        // 422 ARTIFACT_REGRESSION from reject-mode stub-guard) to null.
-        // Surfacing the structured error requires changing that helper's
-        // return contract for all callers — out of scope here. Until then,
-        // a generic banner makes the failure observable instead of silent.
-        // Allow the user to retry by clearing the saved-artifact ref so a
-        // retry attempt re-enters this code path.
+        // writeProjectTextFile collapses all failure paths (non-OK HTTP
+        // responses, network errors, and stub-guard 422s) to null — the
+        // helper's return contract would need to be widened to distinguish
+        // them, which is out of scope here.  Show a generic banner so the
+        // failure is observable rather than silent; the daemon logs carry
+        // the structured details for any specific error type.
+        // Clear the saved-artifact ref so the user can retry.
         savedArtifactRef.current = '';
         setError(
-          `Couldn't save artifact "${fileName}". The daemon refused the write — ` +
-            'this is most likely OD_ARTIFACT_STUB_GUARD=reject catching a placeholder body. ' +
-            'Check the daemon logs for the structured ARTIFACT_REGRESSION details.',
+          `Couldn't save artifact "${fileName}". The write failed — ` +
+            'check the daemon logs for details.',
         );
       }
     },
@@ -1928,6 +2028,20 @@ export function ProjectView({
     [project, onProjectChange],
   );
 
+  const handleSaveInstructions = useCallback(async () => {
+    const value = instructionsDraft.trim() || undefined;
+    if (value === (project.customInstructions ?? undefined)) {
+      setInstructionsOpen(false);
+      return;
+    }
+    setInstructionsSaving(true);
+    const result = await patchProject(project.id, { customInstructions: value ?? null });
+    setInstructionsSaving(false);
+    if (!result) return;
+    onProjectChange(result);
+    setInstructionsOpen(false);
+  }, [project, onProjectChange, instructionsDraft]);
+
   const projectMeta = useMemo(() => {
     const summary =
       skills.find((s) => s.id === project.skillId) ??
@@ -1936,6 +2050,13 @@ export function ProjectView({
     const ds = designSystems.find((d) => d.id === project.designSystemId)?.title;
     return [skill, ds].filter(Boolean).join(' · ') || t('project.metaFreeform');
   }, [skills, designTemplates, designSystems, project.skillId, project.designSystemId, t]);
+
+  const targetPlatforms = useMemo(() => projectTargetPlatforms(project), [project]);
+  const targetPlatformsLabel = targetPlatforms.join(', ');
+  const visibleTargetPlatforms = targetPlatforms.slice(0, 5);
+  const hiddenTargetPlatformCount = Math.max(0, targetPlatforms.length - visibleTargetPlatforms.length);
+  const featureChips = useMemo(() => projectFeatureChips(project), [project]);
+  const featureChipsLabel = featureChips.map((chip) => chip.label).join(', ');
 
   const isDeck = useMemo(
     () =>
@@ -2266,6 +2387,7 @@ export function ProjectView({
         )}
       >
         <div className="app-project-title">
+          <span className="app-project-title-line">
             <span
               className="title editable"
               data-testid="project-title"
@@ -2284,8 +2406,83 @@ export function ProjectView({
               {project.name}
             </span>
             <span className="meta" data-testid="project-meta">{projectMeta}</span>
+            <button
+              type="button"
+              className="project-instructions-toggle"
+              title={t('project.customInstructions')}
+              onClick={() => {
+                if (instructionsOpen) setInstructionsDraft(project.customInstructions ?? '');
+                setInstructionsOpen((v) => !v);
+              }}
+            >
+              <Icon name="edit" size={13} />
+            </button>
+          </span>
+          {targetPlatforms.length > 0 ? (
+            <span
+              className="project-target-platforms"
+              data-testid="project-target-platforms"
+              title={`Target platforms: ${targetPlatformsLabel}`}
+            >
+              <span className="project-target-platforms-label">Targets</span>
+              {visibleTargetPlatforms.map((platform) => (
+                <span className="project-target-platform-chip" key={platform}>
+                  {platform}
+                </span>
+              ))}
+              {hiddenTargetPlatformCount > 0 ? (
+                <span className="project-target-platform-chip is-count">
+                  +{hiddenTargetPlatformCount}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+          {featureChips.length > 0 ? (
+            <span
+              className="project-feature-chips"
+              data-testid="project-feature-chips"
+              title={`Enabled design outputs: ${featureChipsLabel}`}
+            >
+              <span className="project-feature-chips-label">Includes</span>
+              {featureChips.map((chip) => (
+                <span
+                  className={`project-feature-chip is-${chip.tone}`}
+                  key={chip.tone}
+                  title={chip.title}
+                >
+                  {chip.label}
+                </span>
+              ))}
+            </span>
+          ) : null}
         </div>
       </AppChromeHeader>
+      {instructionsOpen && (
+        <div className="project-instructions-bar">
+          <label className="project-instructions-label">{t('project.customInstructions')}</label>
+          <textarea
+            className="project-instructions-input"
+            rows={3}
+            maxLength={5000}
+            placeholder={t('project.customInstructionsPlaceholder')}
+            value={instructionsDraft}
+            onChange={(e) => setInstructionsDraft(e.target.value)}
+            disabled={instructionsSaving}
+            autoFocus
+          />
+          <div className="project-instructions-actions">
+            <button type="button" className="btn-sm" disabled={instructionsSaving} onClick={() => {
+              setInstructionsDraft(project.customInstructions ?? '');
+              setInstructionsOpen(false);
+            }}>
+              {t('common.cancel')}
+            </button>
+            <button type="button" className="btn-sm btn-primary" disabled={instructionsSaving} onClick={handleSaveInstructions}>
+              {t('common.save')}
+            </button>
+          </div>
+        </div>
+      )}
       <ProjectActionsToolbar
         designMdState={designMdState}
         finalizeStatus={finalize.status}
@@ -2336,6 +2533,7 @@ export function ProjectView({
                 void handleSend(text, [], []);
               }}
               onContinueRemainingTasks={handleContinueRemainingTasks}
+              onAssistantFeedback={handleAssistantFeedback}
               onNewConversation={handleNewConversation}
               newConversationDisabled={newConversationDisabled}
               conversations={conversations}
