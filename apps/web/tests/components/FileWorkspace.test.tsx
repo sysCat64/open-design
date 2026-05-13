@@ -139,6 +139,7 @@ describe('FileWorkspace upload input', () => {
     const markup = renderToStaticMarkup(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -158,6 +159,7 @@ describe('FileWorkspace upload input', () => {
     render(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[baseFile()]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -215,6 +217,7 @@ describe('FileWorkspace upload input', () => {
     render(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[baseFile({ name: 'uploaded.png', path: 'uploaded.png' })]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -244,6 +247,7 @@ describe('FileWorkspace upload input', () => {
     const markup = renderToStaticMarkup(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -264,6 +268,7 @@ describe('FileWorkspace upload input', () => {
     const markup = renderToStaticMarkup(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -288,6 +293,7 @@ describe('FileWorkspace upload input', () => {
     const markup = renderToStaticMarkup(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -388,6 +394,7 @@ describe('FileWorkspace tab reordering', () => {
     const container = renderWorkspace(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[
           workspaceFile('analysis.html'),
           workspaceFile('notes.md'),
@@ -427,6 +434,7 @@ describe('FileWorkspace tab reordering', () => {
     const container = renderWorkspace(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[
           workspaceFile('analysis.html'),
           workspaceFile('notes.md'),
@@ -465,6 +473,7 @@ describe('FileWorkspace tab reordering', () => {
     const container = renderWorkspace(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[workspaceFile('analysis.html'), workspaceFile('notes.md')]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -493,6 +502,7 @@ describe('FileWorkspace tab reordering', () => {
     const container = renderWorkspace(
       <FileWorkspace
         projectId="project-1"
+        projectKind="prototype"
         files={[workspaceFile('analysis.html'), workspaceFile('notes.md')]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}

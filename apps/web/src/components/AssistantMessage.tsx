@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ToolCard } from "./ToolCard";
 import { FileOpsSummary } from "./FileOpsSummary";
 import { renderMarkdown } from "../runtime/markdown";
@@ -410,6 +410,7 @@ function AssistantFeedback({
   const [burstKey, setBurstKey] = useState(0);
   const [reasonRating, setReasonRating] =
     useState<ChatMessageFeedbackRating | null>(null);
+  const reasonsRef = useRef<HTMLDivElement | null>(null);
   const [draftReasonCodes, setDraftReasonCodes] = useState<
     Set<ChatMessageFeedbackReasonCode>
   >(() => new Set());
@@ -419,6 +420,10 @@ function AssistantFeedback({
     if (selected) return;
     setReasonRating(null);
   }, [selected]);
+  useEffect(() => {
+    if (!reasonRating) return;
+    reasonsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [reasonRating]);
   const toggleFeedback = (rating: ChatMessageFeedbackRating) => {
     const nextRating = selected === rating ? null : rating;
     if (nextRating === "positive") setBurstKey((key) => key + 1);
@@ -506,7 +511,7 @@ function AssistantFeedback({
     <div className="assistant-feedback-wrap">
       <AssistantFooter {...footerProps} feedbackControls={controls} />
       {reasonRating ? (
-        <div className="assistant-feedback-reasons">
+        <div className="assistant-feedback-reasons" ref={reasonsRef}>
           <div className="assistant-feedback-reason-title">
             <span>{t("assistant.feedbackReasonTitle")}</span>
             <span className="assistant-feedback-reason-emoji" aria-hidden="true">

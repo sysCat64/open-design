@@ -3,10 +3,12 @@ import type {
   PreviewCommentMember,
   PreviewCommentPosition,
   PreviewCommentSelectionKind,
+  PreviewVisualMarkKind,
 } from './comments';
 import type { ResearchOptions } from './research';
 
 export type ChatRole = 'user' | 'assistant';
+export type ChatCommentSelectionKind = PreviewCommentSelectionKind | 'visual';
 
 export interface ChatRequest {
   agentId: string;
@@ -111,9 +113,12 @@ export interface ChatCommentAttachment {
   currentText: string;
   pagePosition: PreviewCommentPosition;
   htmlHint: string;
-  selectionKind?: PreviewCommentSelectionKind;
+  selectionKind?: ChatCommentSelectionKind;
   memberCount?: number;
   podMembers?: PreviewCommentMember[];
+  screenshotPath?: string;
+  markKind?: PreviewVisualMarkKind;
+  intent?: string;
   source?: 'saved-comment' | 'board-batch';
 }
 

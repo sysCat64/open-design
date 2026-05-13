@@ -5,6 +5,7 @@ import {
   useState,
   type DragEvent as ReactDragEvent,
 } from 'react';
+import type { TrackingProjectKind } from '@open-design/contracts/analytics';
 import { useT } from '../i18n';
 import { isMacPlatform } from '../utils/platform';
 import {
@@ -47,6 +48,7 @@ import {
 
 interface Props {
   projectId: string;
+  projectKind: TrackingProjectKind;
   files: ProjectFile[];
   liveArtifacts: LiveArtifactSummary[];
   onRefreshFiles: () => Promise<void> | void;
@@ -83,6 +85,7 @@ type TabDropEdge = 'before' | 'after';
 
 export function FileWorkspace({
   projectId,
+  projectKind,
   files,
   liveArtifacts,
   onRefreshFiles,
@@ -798,6 +801,7 @@ export function FileWorkspace({
         ) : activeFile ? (
           <FileViewer
             projectId={projectId}
+            projectKind={projectKind}
             file={activeFile}
             isDeck={isDeck}
             onExportAsPptx={onExportAsPptx}
