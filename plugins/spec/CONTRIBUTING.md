@@ -10,6 +10,7 @@ Plugins that follow this spec can live in this repo as examples, or in their own
 - Improvements to templates, authoring docs, evals, or PR checklists.
 - Fixes that make plugin folders more portable across Agent Skills compatible clients.
 - Marketplace index updates that point to public plugin repos.
+- Registry publishing notes for skills.sh, ClawHub, or another dedicated skill registry.
 
 ## Review Checklist
 
@@ -22,6 +23,7 @@ Reviewers should check:
 - Capabilities are minimal.
 - Externally visible actions are guarded by user confirmation.
 - Visual examples include a preview or concrete output.
+- Registry publishing claims link to canonical source and do not imply registry endorsement.
 - JSON is valid and validation commands are listed in the PR.
 
 ## PR Template
@@ -43,4 +45,11 @@ Reviewers should check:
 ## Validation
 
 ## Screenshots or example outputs
+
+## Registry publishing
+
+- Canonical source:
+- skills.sh:
+- ClawHub:
+- Other registries:
 ```

@@ -10,6 +10,7 @@
 - 模板、作者文档、evals 或 PR checklist 的改进。
 - 提升插件在 Agent Skills 兼容客户端之间可移植性的修复。
 - 指向公开插件仓库的 marketplace index 更新。
+- skills.sh、ClawHub 或其他专用 skill registry 的发布说明。
 
 ## Review Checklist
 
@@ -22,6 +23,7 @@ Reviewer 应检查：
 - capabilities 是最小必要集合。
 - 对外可见的操作有用户确认。
 - 视觉类示例包含 preview 或具体输出。
+- registry 发布声明链接到 canonical source，且不暗示 registry 背书。
 - JSON 合法，PR 中列出了验证命令。
 
 ## PR 模板
@@ -43,5 +45,11 @@ Reviewer 应检查：
 ## Validation
 
 ## Screenshots or example outputs
-```
 
+## Registry publishing
+
+- Canonical source:
+- skills.sh:
+- ClawHub:
+- Other registries:
+```

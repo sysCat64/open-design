@@ -211,3 +211,4 @@ preview 应展示真实输出形态，而不是装饰性的 splash screen。
 5. 视觉类插件包含一张截图、渲染 preview 或示例输出。
 6. 在 PR body 里说明 trust 和 capabilities。
 
+外部 registry 分发策略见 [`PUBLISHING-REGISTRIES.zh-CN.md`](PUBLISHING-REGISTRIES.zh-CN.md)。简言之：把 GitHub 或 Open Design PR 作为 source of truth，让文件夹能作为通用 `SKILL.md` skill 安装；本地验证通过后，再发布或登记到 skills.sh、ClawHub 或其他 registry。

@@ -14,6 +14,6 @@
 - 插件规范包：[`spec/README.zh-CN.md`](spec/README.zh-CN.md)
 - 插件作者规范：[`spec/SPEC.zh-CN.md`](spec/SPEC.zh-CN.md)
 - Agent handoff 指南：[`spec/AGENT-DEVELOPMENT.zh-CN.md`](spec/AGENT-DEVELOPMENT.zh-CN.md)
+- Registry 发布策略：[`spec/PUBLISHING-REGISTRIES.zh-CN.md`](spec/PUBLISHING-REGISTRIES.zh-CN.md)
 - 完整产品 spec：[`../docs/plugins-spec.zh-CN.md`](../docs/plugins-spec.zh-CN.md)
 - Manifest schema：[`../docs/schemas/open-design.plugin.v1.json`](../docs/schemas/open-design.plugin.v1.json)
-

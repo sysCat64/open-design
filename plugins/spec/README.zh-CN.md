@@ -11,6 +11,7 @@ Open Design 插件遵循和 Agent Skills 兼容的可移植形态：一个包含
 - [`SPEC.zh-CN.md`](SPEC.zh-CN.md) - 可移植插件规范与分类。
 - [`AGENT-DEVELOPMENT.zh-CN.md`](AGENT-DEVELOPMENT.zh-CN.md) - 可以直接复制给外部 agent 的开发说明。
 - [`CONTRIBUTING.zh-CN.md`](CONTRIBUTING.zh-CN.md) - 遵循此规范的插件 PR 标准。
+- [`PUBLISHING-REGISTRIES.zh-CN.md`](PUBLISHING-REGISTRIES.zh-CN.md) - 发布到 skills.sh、ClawHub、GitHub 和 Open Design 的策略。
 - [`templates/`](templates/) - 空白 starter 文件。
 - [`examples/`](examples/) - 完整示例插件文件夹和示例 marketplace index。
 
@@ -19,6 +20,7 @@ Open Design 插件遵循和 Agent Skills 兼容的可移植形态：一个包含
 - [`SPEC.md`](SPEC.md)
 - [`AGENT-DEVELOPMENT.md`](AGENT-DEVELOPMENT.md)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`PUBLISHING-REGISTRIES.md`](PUBLISHING-REGISTRIES.md)
 - [`examples/README.md`](examples/README.md)
 
 ## 可以构建什么
@@ -64,4 +66,3 @@ od plugin apply <plugin-id> --input key=value
 - Agent Skills overview: https://agentskills.io/home
 - Agent Skills specification: https://agentskills.io/specification
 - Open Design 插件完整 spec: ../../docs/plugins-spec.zh-CN.md
-

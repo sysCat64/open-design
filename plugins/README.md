@@ -14,5 +14,6 @@ Start here:
 - Plugin spec kit: [`spec/README.md`](spec/README.md)
 - Plugin authoring spec: [`spec/SPEC.md`](spec/SPEC.md)
 - Agent handoff guide: [`spec/AGENT-DEVELOPMENT.md`](spec/AGENT-DEVELOPMENT.md)
+- Registry publishing strategy: [`spec/PUBLISHING-REGISTRIES.md`](spec/PUBLISHING-REGISTRIES.md)
 - Full product spec: [`../docs/plugins-spec.md`](../docs/plugins-spec.md)
 - Manifest schema: [`../docs/schemas/open-design.plugin.v1.json`](../docs/schemas/open-design.plugin.v1.json)

@@ -210,3 +210,5 @@ Before opening a PR:
 4. If available, run `od plugin validate ./path/to/plugin`.
 5. Include one screenshot, rendered preview, or example output when the plugin is visual.
 6. Explain trust and capabilities in the PR body.
+
+For external registry distribution, follow [`PUBLISHING-REGISTRIES.md`](PUBLISHING-REGISTRIES.md). In short: keep GitHub or the Open Design PR as source of truth, make the folder installable as a generic `SKILL.md` skill, then publish or list it on skills.sh, ClawHub, or other registries only after local validation passes.

@@ -11,6 +11,7 @@ Open Design plugins follow the same portable shape as Agent Skills: a folder wit
 - [`SPEC.md`](SPEC.md) - the portable plugin spec and taxonomy.
 - [`AGENT-DEVELOPMENT.md`](AGENT-DEVELOPMENT.md) - copy this into an external agent session to build and validate a plugin.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) - PR standards for plugins that follow this spec.
+- [`PUBLISHING-REGISTRIES.md`](PUBLISHING-REGISTRIES.md) - strategies for skills.sh, ClawHub, GitHub, and Open Design publishing.
 - [`templates/`](templates/) - blank starter files.
 - [`examples/`](examples/) - complete example plugin folders and a sample marketplace index.
 
@@ -19,6 +20,7 @@ Chinese mirrors:
 - [`SPEC.zh-CN.md`](SPEC.zh-CN.md)
 - [`AGENT-DEVELOPMENT.zh-CN.md`](AGENT-DEVELOPMENT.zh-CN.md)
 - [`CONTRIBUTING.zh-CN.md`](CONTRIBUTING.zh-CN.md)
+- [`PUBLISHING-REGISTRIES.zh-CN.md`](PUBLISHING-REGISTRIES.zh-CN.md)
 - [`examples/README.zh-CN.md`](examples/README.zh-CN.md)
 
 ## What To Build

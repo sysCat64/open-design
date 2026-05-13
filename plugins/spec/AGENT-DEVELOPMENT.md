@@ -20,6 +20,7 @@ Read these files before editing:
 - `plugins/spec/SPEC.md`
 - `docs/schemas/open-design.plugin.v1.json`
 - `docs/plugins-spec.md` when you need deeper product semantics
+- `plugins/spec/PUBLISHING-REGISTRIES.md` when the user asks to publish outside Open Design
 - A nearby example under `plugins/spec/examples/`
 
 ## Build Procedure
@@ -38,6 +39,7 @@ Read these files before editing:
 4. Put OD-specific display, inputs, preview, pipeline, atoms, connectors, and capabilities in `open-design.json`.
 5. Add `examples/`, `preview/`, `assets/`, or `references/` only when they materially help the agent produce better results.
 6. Add `evals/evals.json` when the plugin has enough behavior to regress.
+7. If publishing externally, prepare registry-safe README sections for skills.sh, ClawHub, and canonical GitHub source.
 
 ## Quality Bar
 
@@ -78,3 +80,4 @@ When opening or preparing a PR, include:
 - Validation commands and results.
 - Capabilities requested.
 - Screenshots, preview URLs, or example artifacts for visual plugins.
+- Registry links and dry-run output when publishing to skills.sh, ClawHub, or another skill registry.

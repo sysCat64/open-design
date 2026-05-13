@@ -20,6 +20,7 @@
 - `plugins/spec/SPEC.zh-CN.md`
 - `docs/schemas/open-design.plugin.v1.json`
 - 需要更深入产品语义时阅读 `docs/plugins-spec.zh-CN.md`
+- 当用户要求发布到 Open Design 以外的 registry 时，阅读 `plugins/spec/PUBLISHING-REGISTRIES.zh-CN.md`
 - `plugins/spec/examples/` 下最接近的示例
 
 ## 构建流程
@@ -38,6 +39,7 @@
 4. 把 OD 专属 display、inputs、preview、pipeline、atoms、connectors 和 capabilities 放进 `open-design.json`。
 5. 只有在能明显提升 agent 输出质量时，才添加 `examples/`、`preview/`、`assets/` 或 `references/`。
 6. 当插件行为足够复杂、容易回归时，添加 `evals/evals.json`。
+7. 如果要对外发布，准备适配 skills.sh、ClawHub 和 canonical GitHub source 的 registry-safe README 段落。
 
 ## 完成标准
 
@@ -78,4 +80,4 @@ od plugin apply <plugin-id> --input key=value
 - 验证命令与结果。
 - 请求的 capabilities。
 - 视觉类插件的截图、preview URL 或示例 artifact。
-
+- 发布到 skills.sh、ClawHub 或其他 skill registry 时，附上 registry 链接和 dry-run 输出。
