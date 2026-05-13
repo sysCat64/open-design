@@ -7,8 +7,8 @@
   /* Surface palette — neutral app chrome that does not bias generated artifacts.
      Keep warm/brand colors out of preview backgrounds; generated product UI
      must choose its own palette through the active skill/design brief. */
-  --bg: #f6f7f9;
-  --bg-app: #f6f7f9;
+  --bg: #faf9f7;
+  --bg-app: #faf9f7;
   --bg-panel: #ffffff;
   --bg-subtle: #eef1f5;
   --bg-muted: #e4e8ef;
