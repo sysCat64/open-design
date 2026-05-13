@@ -34,7 +34,7 @@ const PLUGINS_TABS: ReadonlyArray<{
   hint: string;
   disabled?: boolean;
 }> = [
-  { id: 'community', label: 'Community', hint: 'Official catalog' },
+  { id: 'community', label: 'Official', hint: 'Open Design catalog' },
   { id: 'mine', label: 'My plugins', hint: 'User-installed' },
   { id: 'marketplaces', label: 'Marketplaces', hint: 'Coming soon', disabled: true },
   { id: 'team', label: 'Team / Enterprise', hint: 'Coming soon' },
@@ -240,8 +240,8 @@ export function PluginsView({
             onUse={(record) => void handleUsePlugin(record)}
             onOpenDetails={setDetailsRecord}
             onCreatePlugin={onCreatePlugin}
-            title="Community"
-            subtitle="Import, create, export, refine, or extend Open Design — packaged as plugins. Pick one to load a starter prompt, or use @ search from Home."
+            title="Official"
+            subtitle="First-party Open Design workflows packaged as plugins. Pick one to load a starter prompt, or use @ search from Home."
             emptyMessage="No official plugins are registered yet. Restart the daemon if this looks wrong."
           />
         ) : null}

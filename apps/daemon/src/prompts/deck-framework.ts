@@ -375,6 +375,36 @@ Each \`<section class="slide" data-screen-label="NN Title">\` is one slide rende
 
 Real copy only — no lorem ipsum, no invented metrics, no generic emoji icon rows. If you don't have a value, leave a short honest placeholder.
 
+## Density and overflow discipline (the #1 cause of ugly decks)
+
+Even with the visibility toggle working, slides go ugly when content overflows the 1920×1080 canvas. Specific failure modes that ship today:
+
+- ❌ Title slides with a display headline ≥ 160px **plus** a multi-line subtitle/deck paragraph **plus** an absolutely-positioned \`.footer\` at \`bottom: ~56px\`. The flow content grows downward, the absolute footer occupies the bottom band, and the two collide in the last ~100px of the slide.
+- ❌ Stat slides with three numbers + three captions + a footer. Split into three stat slides — the framework counts slides for you, more slides cost nothing.
+- ❌ "Magazine spread" attempts that pack masthead + display headline + body grid + sidebar + absolute footer all into a single 1080px slide.
+
+Rules — non-negotiable:
+
+1. **Display headlines on cover/title slides: max ~140px font-size, max 8 words, max 3 lines.** If the headline doesn't fit those bounds, the slide is the wrong shape — split it, don't shrink the font and pack more in.
+2. **Reserve a footer safe-zone.** If you use \`.footer { position: absolute; bottom: Npx; }\`, flow content above the footer must stop at least 80px before \`1080 − footer_height − N\`. Practically: don't let flow content extend into the bottom 200px of the slide. Easiest enforcement: make the slide's main content area its own \`<div style="height: 760px;">\` (or \`max-height\`), and the footer absolute below it.
+3. **Body slides: ≤ 3 paragraphs, ≤ 56ch lead text width, ≤ 12 words per line.**
+4. **One idea per slide.** Two ideas = two slides.
+
+## Pre-emit self-check — run this BEFORE writing the \`<artifact>\` tag
+
+For every \`<section class="slide">\`, mentally render at 1920×1080 and answer:
+
+- [ ] Does the slide's content fit inside the canvas without clipping or overflowing the bottom?
+- [ ] If there's an absolutely-positioned footer/header, does flow content stop before the footer's reserved band? (See Rule 2 above.)
+- [ ] Is the display headline ≤ 140px and ≤ 8 words?
+- [ ] Does the slide carry ≤ one big idea? (No mashed-together masthead + display headline + subtitle + absolute footer + sidebar.)
+
+If any answer is "no", redesign the slide BEFORE emitting. Decks that overflow are the most common single failure mode reported by users; the user has rejected one before and will reject one again.
+
+## Prefer the simple-deck skill's layout vocabulary when reachable
+
+If \`plugins/_official/examples/simple-deck/assets/template.html\` and its \`references/layouts.md\` are readable from the project workspace, **prefer those layouts over inventing your own**. The simple-deck skill ships eight paste-ready slide skeletons (cover, body, big-stat, three-point row, pipeline, dark quote, before/after, closing) with tested type scales, density rules, and a P0/P1/P2 checklist. Re-inventing those layouts is the source of most density / overflow bugs the framework can't catch.
+
 ## Canonical skeleton (this is exactly what the file you write looks like)
 
 \`\`\`html

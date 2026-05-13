@@ -283,4 +283,18 @@ describe('PluginDetailsModal common metadata coverage', () => {
     expect(html).toContain('plugin-meta-sections');
     expect(html).not.toContain('plugin-meta-sections__heading');
   });
+
+  it('routes official plugin author and source links to the Open Design repo', () => {
+    const html = render(
+      pluginWithMeta({
+        id: 'official-link-meta',
+        title: 'Official Link Meta',
+        mode: 'prototype',
+      }),
+    );
+
+    expect(html).toContain('href="https://github.com/nexu-io/open-design"');
+    expect(html).toContain('nexu-io/open-design');
+    expect(html).toContain('Official');
+  });
 });

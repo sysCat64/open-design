@@ -135,7 +135,8 @@ function githubProfileLabel(url: string): string {
     const parsed = new URL(url);
     if (/^(?:www\.)?github\.com$/.test(parsed.hostname)) {
       const segments = parsed.pathname.split('/').filter(Boolean);
-      if (segments.length > 0) return `@${segments[0]}`;
+      if (segments.length >= 2) return `${segments[0]}/${segments[1]!.replace(/\.git$/, '')}`;
+      if (segments.length === 1) return `@${segments[0]}`;
     }
     return parsed.hostname + parsed.pathname.replace(/\/$/, '');
   } catch {

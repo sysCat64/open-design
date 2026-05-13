@@ -147,7 +147,7 @@ describe('PluginsView', () => {
     expect(screen.queryByRole('dialog', { name: 'Create or import a plugin' })).toBeNull();
   });
 
-  it('groups community and user-installed plugins while keeping marketplaces coming soon', async () => {
+  it('groups official and user-installed plugins while keeping marketplaces coming soon', async () => {
     render(<PluginsView />);
 
     await waitFor(() => expect(screen.getAllByText('Official Plugin').length).toBeGreaterThan(0));

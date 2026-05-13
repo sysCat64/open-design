@@ -174,8 +174,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [mcpTemplates, setMcpTemplates] = useState<McpTemplate[]>([]);
     const [skills, setSkills] = useState<SkillSummary[]>([]);
     // Installed plugins, fetched lazily for the tools-menu Plugins tab and
-    // the @-mention picker. Both surfaces share the same list so the
-    // count badge on the trigger stays consistent.
+    // the @-mention picker. Both surfaces share the same list so applying
+    // a plugin from either path lands on the same project context.
     const [installedPlugins, setInstalledPlugins] = useState<InstalledPluginRecord[]>([]);
     // Detail modal — opened from a context chip click (kind === 'plugin')
     // or from the tools-menu "Details" affordance.
@@ -1329,9 +1329,9 @@ function ToolsPluginsPanel({
             aria-selected={source === 'community'}
             className={`composer-tools-segment${source === 'community' ? ' active' : ''}`}
             onClick={() => setSource('community')}
-            title={`${communityPlugins.length} installed community plugins`}
+            title={`${communityPlugins.length} installed official plugins`}
           >
-            Community
+            Official
           </button>
           <button
             type="button"
@@ -1356,13 +1356,13 @@ function ToolsPluginsPanel({
         <div className="composer-tools-empty">
           {plugins.length === 0 ? (
             <>
-              No plugins installed yet. Browse Community or add your own with{' '}
+              No plugins installed yet. Browse Official or add your own with{' '}
               <code>od plugin install &lt;source&gt;</code>.
             </>
           ) : query ? (
-            <>No {source === 'community' ? 'Community' : 'My plugins'} results for “{query}”.</>
+            <>No {source === 'community' ? 'Official' : 'My plugins'} results for “{query}”.</>
           ) : (
-            <>No {source === 'community' ? 'Community' : 'My plugins'} plugins available.</>
+            <>No {source === 'community' ? 'Official' : 'My plugins'} plugins available.</>
           )}
         </div>
       ) : (
@@ -1653,7 +1653,7 @@ function mcpTemplateMatchesQuery(tpl: McpTemplate, query: string): boolean {
 }
 
 function pluginSourceLabel(plugin: InstalledPluginRecord): string {
-  return plugin.sourceKind === 'bundled' ? 'Community' : 'My plugin';
+  return plugin.sourceKind === 'bundled' ? 'Official' : 'My plugin';
 }
 
 function ToolsImportPanel({
@@ -1859,12 +1859,12 @@ function MentionPopover({
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [tab, setTab] = useState<MentionTab>('all');
-  const tabs: Array<{ id: MentionTab; label: string; count: number }> = [
-    { id: 'all', label: 'All', count: plugins.length + skills.length + mcpServers.length + files.length },
-    { id: 'plugins', label: 'Plugins', count: plugins.length },
-    { id: 'skills', label: 'Skills', count: skills.length },
-    { id: 'mcp', label: 'MCP', count: mcpServers.length },
-    { id: 'files', label: 'Design files', count: files.length },
+  const tabs: Array<{ id: MentionTab; label: string }> = [
+    { id: 'all', label: 'All' },
+    { id: 'plugins', label: 'Plugins' },
+    { id: 'skills', label: 'Skills' },
+    { id: 'mcp', label: 'MCP' },
+    { id: 'files', label: 'Design files' },
   ];
   const showPlugins = tab === 'all' || tab === 'plugins';
   const showSkills = tab === 'all' || tab === 'skills';
@@ -1891,8 +1891,7 @@ function MentionPopover({
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setTab(item.id)}
           >
-            <span>{item.label}</span>
-            {item.count > 0 ? <span>{item.count}</span> : null}
+            {item.label}
           </button>
         ))}
       </div>

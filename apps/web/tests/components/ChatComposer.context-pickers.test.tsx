@@ -170,7 +170,7 @@ describe('ChatComposer context pickers', () => {
     expect(input.value).toBe('Use the @deck-builder skill. ');
   });
 
-  it('lets the tools panel switch between Community and My plugins', async () => {
+  it('lets the tools panel switch between Official and My plugins', async () => {
     renderComposer();
     fireEvent.click(screen.getByLabelText('Open CLI and model settings'));
 

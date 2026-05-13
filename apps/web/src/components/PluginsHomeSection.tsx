@@ -55,8 +55,8 @@ export function PluginsHomeSection({
   onOpenDetails,
   onPluginShareAction,
   onCreatePlugin,
-  title = 'Community',
-  subtitle = 'Things you can do and tasks to complete — packaged as plugins. Pick one to load a starter prompt, or type freely above.',
+  title = 'Official',
+  subtitle = 'First-party Open Design workflows packaged as plugins. Pick one to load a starter prompt, or type freely above.',
   emptyMessage = 'Catalog is empty. Bundled plugins ship with Open Design and should appear here automatically — try restarting the daemon if this persists.',
 }: Props) {
   const {

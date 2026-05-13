@@ -129,16 +129,18 @@ describe('derivePluginSourceLinks · url + local + bundled sources', () => {
     expect(out.sourceKindLabel).toBe('Local');
   });
 
-  it('shows bundled label for bundled sources', () => {
+  it('routes bundled official sources to the Open Design repo', () => {
     const out = derivePluginSourceLinks(
       makeRecord({
         sourceKind: 'bundled',
         source:     'plugins/_official/scenarios/od-code-migration',
       }),
     );
-    expect(out.sourceUrl).toBeNull();
-    expect(out.sourceKindLabel).toBe('Bundled');
-    expect(out.sourceLabel).toBe('od-code-migration');
+    expect(out.sourceUrl).toBe('https://github.com/nexu-io/open-design');
+    expect(out.sourceKindLabel).toBe('Official');
+    expect(out.sourceLabel).toBe('nexu-io/open-design');
+    expect(out.authorProfileUrl).toBe('https://github.com/nexu-io/open-design');
+    expect(out.homepageUrl).toBe('https://github.com/nexu-io/open-design');
   });
 });
 

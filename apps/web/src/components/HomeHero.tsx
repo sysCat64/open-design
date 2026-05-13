@@ -551,7 +551,7 @@ function mcpServerMatchesQuery(server: McpServerConfig, query: string): boolean 
 }
 
 function getPluginSourceLabel(plugin: InstalledPluginRecord): string {
-  return plugin.sourceKind === 'bundled' ? 'Community' : 'My plugin';
+  return plugin.sourceKind === 'bundled' ? 'Official' : 'My plugin';
 }
 
 interface RailGroupProps {

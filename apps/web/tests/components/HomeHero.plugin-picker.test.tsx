@@ -96,7 +96,7 @@ describe('HomeHero plugin picker', () => {
     );
 
     expect(screen.getByTestId('home-hero-plugin-picker')).toBeTruthy();
-    expect(screen.getByText('Community')).toBeTruthy();
+    expect(screen.getByText('Official')).toBeTruthy();
     expect(screen.getByText('My plugin')).toBeTruthy();
     fireEvent.mouseDown(screen.getByRole('option', { name: /sample user plugin/i }));
 

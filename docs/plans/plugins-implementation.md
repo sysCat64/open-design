@@ -74,6 +74,16 @@ Hard layering rules
 
 This section tracks **what exists in the repo today**. Update in the same PR that lands the module; never let it lie about reality.
 
+### 3.0 Current architecture clarifications (2026-05-13)
+
+These notes capture the product/implementation answers that otherwise get lost between the spec and the code:
+
+- **No plugin selected does not mean a naked agent.** `composeSystemPrompt()` still always layers the Open Design base designer/discovery prompt, project metadata, active design system/craft, and daemon-owned safety/tooling guidance. Plugin context is additive: a selected plugin contributes snapshot-derived `## Active plugin`, `## Plugin inputs`, and active-stage atom blocks. Home free-form runs route through the bundled hidden `od-default` scenario, which shapes task type and then returns to the normal design pipeline.
+- **The pipeline is plugin-assembled, not a fixed wizard.** The reference shorthand is `discovery -> plan -> generate -> critique`, but the runnable shape comes from `od.pipeline.stages[].atoms[]` on the applied plugin or bundled scenario fallback. `apps/daemon/src/plugins/pipeline-runner.ts` emits stage/GenUI events and `packages/contracts/src/prompts/atom-block.ts` renders the active stage body. Some atoms are still prompt fragments / permissive workers; observable atoms such as `diff-review`, `build-test`, and `handoff` now emit durable files or signals.
+- **GenUI is controlled rendering.** Agents/plugins emit structured surface requests (`form`, `choice`, `confirmation`, `oauth-prompt`) and OD renders them with product-owned React/CLI components. Inline `<question-form>` chat UI follows the same principle: parse structured data, render through `QuestionForm`, and keep styling in OD. Plugin-bundled custom components are a separate sandboxed path behind `genui:custom-component`.
+- **AG-UI is interoperability, not the product UI runtime.** `packages/agui-adapter` and `GET /api/runs/:runId/agui` are shipped so CopilotKit / AG-UI clients can consume an OD run. The internal web/desktop UI remains OD-native; adding CopilotKit itself is only justified for an explicit external embed/demo/client.
+- **Scenario discovery still has one product gap.** `apps/web/src/components/home-hero/chips.ts` is a curated Home rail for high-frequency scenarios. `apps/web/src/components/plugins-home/facets.ts` is more data-driven and derives category/subcategory facets from plugin metadata. The desired next slice is a single scenario registry / manifest projection that feeds Home chips, plugin filters, composer tools, and `@search`.
+
 ### 3.1 Packages
 
 | Path | Status | Notes |
@@ -83,8 +93,8 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `packages/contracts/src/plugins/apply.ts` | shipped | Phase 0 — `ApplyResult`, `AppliedPluginSnapshot`, `InputFieldSpec` |
 | `packages/contracts/src/plugins/marketplace.ts` | shipped | Phase 0 — `MarketplaceManifest`, `TrustTier`, `MarketplaceTrust` |
 | `packages/contracts/src/plugins/installed.ts` | shipped | Phase 0 — `InstalledPluginRecord`, `PluginSourceKind` |
-| `packages/contracts/src/plugins/events.ts` | shipped | Phase 0 — placeholder variants for `pipeline_stage_*` and `genui_*` |
-| `packages/contracts/src/prompts/plugin-block.ts` | absent | Phase 2A (PB1); `renderPluginBlock(snapshot)` pure function shared by daemon + contracts composers |
+| `packages/contracts/src/plugins/events.ts` | shipped | Phase 0/2A — `pipeline_stage_*` and `genui_*` event variants used by daemon SSE / ND-JSON |
+| `packages/contracts/src/prompts/plugin-block.ts` | shipped | Phase 2A (PB1); `renderPluginBlock(snapshot)` pure function shared by daemon + contracts composers |
 | `packages/plugin-runtime/` | shipped | Phase 1 — pure TS package: parsers, adapters, merge, resolve, validate, digest |
 
 ### 3.2 Daemon modules
@@ -138,7 +148,7 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `apps/daemon/src/plugins/events.ts` | shipped | Phase 4 — in-memory plugin event ring buffer + SSE feed backing `od plugin events tail` |
 | `packages/plugin-runtime/src/pipeline-fallback.ts` | shipped | spec §23.3.3 — resolveAppliedPipeline falls back to a bundled scenario when od.pipeline is absent |
 | `plugins/_official/atoms/<atom>/{SKILL.md,open-design.json}` | shipped | Phase 4 / 6 / 7 / 8 — 13 first-party atom plugins (4 implemented + 9 reserved fragments) |
-| `plugins/_official/scenarios/<id>/{SKILL.md,open-design.json}` | shipped | Phase 4 (§23.3.3) — 4 default-pipeline scenario plugins (one per taskKind) |
+| `plugins/_official/scenarios/<id>/{SKILL.md,open-design.json}` | shipped | Phase 4 (§23.3.3) — bundled scenario/router/export plugins, including the four taskKind defaults plus `od-default` Home free-form routing |
 | `packages/agui-adapter/` | shipped | Phase 4 — pure-TS AG-UI canonical event encoder |
 | `packages/contracts/src/prompts/atom-block.ts` | shipped | Phase 4 — `renderActiveStageBlock(stageId, bodies)` pure renderer |
 | `tools/pack/docker-compose.yml` | shipped | Phase 5 — hosted-mode reference manifest |
@@ -246,6 +256,8 @@ This section tracks **what exists in the repo today**. Update in the same PR tha
 | `ChatComposer` plugin rail mount | shipped | Phase 2B — `PluginsSection variant='strip'` rendered above the composer input when a `projectId` is bound |
 | `apps/web/src/components/MarketplaceView.tsx` | shipped | Phase 2B — catalog grid + trust filters + configured-catalogs panel; routes `/marketplace`. |
 | `apps/web/src/components/PluginDetailView.tsx` | shipped | Phase 2B — `/marketplace/:id` (alias `/plugins/:id`); 'Use this plugin' calls applyPlugin → Home. |
+| `apps/web/src/components/HomeHero.tsx` + `home-hero/chips.ts` | shipped | Current product entrypoint — curated scenario chip rail; transitional until a unified scenario registry drives Home + filters + composer tools |
+| `apps/web/src/components/PluginsHomeSection.tsx` + `plugins-home/facets.ts` | shipped | Data-derived community filters from manifest/taskKind/scenario/tags/pipeline metadata plus curated category taxonomy |
 
 ---
 
@@ -292,7 +304,7 @@ Three reads from the graph (drove the §6 phase reorder)
 - [ ] **F5. `--json` output uses contracts types; no inline reshape in `cli.ts`.** Phase 1 CLI ships `--json` for `list/info/apply/doctor` returning the daemon JSON verbatim; the next CLI rev imports `ApplyResult` etc. from contracts to satisfy the compile-time guarantee.
 - [x] **F6. `OD_MAX_DEVLOOP_ITERATIONS` lives in `apps/daemon/src/app-config.ts`, default 10, override via env.** Read via `readPluginEnvKnobs()`; consumed by Phase 2A `pipeline.ts`.
 - [ ] **F7. `od plugin doctor` validates `od.connectors.required[]` against `connectorService.listAll()` from Phase 1.** Phase 1 doctor validates manifest schema, atoms, and resolved skill / DS / craft refs; the connector lookup wires in once `connectorService` is exposed to the doctor module (Phase 1 cleanup PR).
-- [ ] **F8. Cross-conversation cache (`genui_surfaces` lookup) goes live with the table — i.e. Phase 2A — and a daemon test asserts the second `oauth-prompt` does not broadcast.** Pulled forward from spec §16 Phase 2A's e2e (e) so the behavior is verified at unit-test layer, not only e2e.
+- [x] **F8. Cross-conversation cache (`genui_surfaces` lookup) goes live with the table — i.e. Phase 2A — and a daemon test asserts the second `oauth-prompt` does not broadcast.** Covered by `apps/daemon/tests/plugins-pipeline-runner.test.ts` (`reuses a project-tier surface answer across conversations`).
 - [x] **F9. Snapshot lifecycle env vars (PB2)** live in `apps/daemon/src/app-config.ts` from Phase 1: `OD_SNAPSHOT_UNREFERENCED_TTL_DAYS` (default `30`, set to `0` to disable), `OD_SNAPSHOT_RETENTION_DAYS` (default unset, opt-in), `OD_SNAPSHOT_GC_INTERVAL_MS` (default `6 * 60 * 60 * 1000`). All three live in `readPluginEnvKnobs()`; `applied_plugin_snapshots.expires_at` is stamped on insert; the GC worker lands Phase 5.
 
 ---
@@ -487,7 +499,7 @@ Deliverables
 Validation
 
 - [ ] **e2e-9 UI ↔ CLI parity**: pick 5 desktop UI workflows; replay each through `od …` only; produced artifacts byte-for-byte equal.
-- [ ] AG-UI smoke: a CopilotKit React client subscribes to `/api/runs/:runId/agui` and renders surfaces unmodified.
+- [ ] AG-UI smoke: a CopilotKit React client subscribes to `/api/runs/:runId/agui` and renders surfaces unmodified. This is an external-interop smoke, not a blocker for OD-native web/desktop rendering.
 
 ### Phase 5 — Cloud deployment (parallel; can start after Phase 1.5)
 
@@ -571,9 +583,9 @@ Plus repo-wide gates
 | Field | Value |
 | --- | --- |
 | Current phase | Phase 2A + 1 + 1.5 + 2B + 2C entry slice + 3 (full) + 4 (full incl. OD_BUNDLED_ATOM_PROMPTS default ON) + 5 (full incl. live S3 impl; postgres adapter still stubbed) + 6 (full incl. asset rasterisation) + 7 (all six atom impls) + 8 (full incl. GenUI \u2192 decision bridge) + scenarios bundle + bundled-scenario fallback resolver |
-| Next planned PR | (a) Phase 2C — `od files write/upload/delete/diff` + `od project import` + `od conversation new`. (b) Phase 3 — Trust UI on `PluginDetailView` + bundle plugin installer. (c) Phase 4 e2e-9 — UI ↔ CLI parity walkthrough (5 workflows). (d) postgres adapter wiring inside the DaemonDb resolver. |
+| Next planned PR | (a) Phase 2C — `od files write/upload/delete/diff` + `od project import` + `od conversation new`. (b) Phase 3 — Trust UI on `PluginDetailView` + bundle plugin installer. (c) Phase 4 e2e-9 — UI ↔ CLI parity walkthrough (5 workflows). (d) postgres adapter wiring inside the DaemonDb resolver. (e) Scenario registry convergence so Home chips, plugin filters, composer tools, and `@search` project from the same manifest/scenario taxonomy. |
 | Open spec push-backs | none — PB1 / PB2 resolved (see §7) |
-| Last sync against `docs/plugins-spec.md` | 2026-05-11 (Phase 2A.5 + 2B + CLI cleanup landed: project-pinned snapshot fallback in `/api/runs`; JsonSchemaFormSurface + `od ui show --schema`; sandboxed `/api/plugins/:id/preview` + `/example/:name` with \u00a79.2 CSP; PluginDetailView mounts the preview iframe + example links; bundled scenario plugins (`od-new-generation`, `od-tune-collab`, `od-figma-migration`, `od-code-migration`) end-to-end smoke confirms `pipeline_stage_*` events + devloop iterations rows; `parseFlags()` regression repaired (positional args silently passed to caller; TDZ on DAEMON/LIBRARY/PLUGIN_LIST flag sets resolved by hoisting); CLI parity walk green for `od plugin list/info/doctor/apply`, `od atoms list`, `od status`, `od daemon status`, `od plugin snapshots list`) |
+| Last sync against `docs/plugins-spec.md` | 2026-05-13 (clarified default/no-plugin behavior, `od-default` routing, daemon system-prompt layering, plugin-assembled pipeline stages, OD-native controlled GenUI rendering, AG-UI adapter as interoperability only, and the current Home rail vs PluginsHome facet convergence gap) |
 
 Update this table on every plugin-system PR merge. When the value of "Current phase" advances, also flip the matching deliverables in §6 and the modules in §3.
 
