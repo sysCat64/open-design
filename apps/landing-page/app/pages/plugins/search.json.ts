@@ -9,6 +9,17 @@ export const GET: APIRoute = () => {
     registryId: plugin.registryId,
     trust: plugin.trust,
     version: plugin.version,
+    mode: plugin.mode,
+    surface: plugin.surface,
+    visualKind: plugin.visualKind,
+    preview: plugin.preview
+      ? {
+          type: plugin.preview.type,
+          label: plugin.preview.label,
+          poster: plugin.preview.poster,
+          frameHref: plugin.preview.frameHref,
+        }
+      : undefined,
     tags: plugin.tags,
     capabilities: plugin.capabilities,
     href: plugin.detailHref,

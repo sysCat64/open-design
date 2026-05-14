@@ -42,7 +42,6 @@ const REPO_DAEMON = `${REPO}/tree/main/apps/daemon`;
 const REPO_SKILLS = `${REPO}/tree/main/skills`;
 const REPO_DESIGN_SYSTEMS = `${REPO}/tree/main/design-systems`;
 const REPO_DOCS = (file: string) => `${REPO}/blob/main/${file}`;
-const PLUGINS_PAGE = '/plugins/';
 
 // Lineage / inspiration projects — make every brand mention clickable.
 const LINEAGE = {
@@ -173,10 +172,6 @@ export default function Page() {
                 </a>
                 <a className='btn btn-ghost' href={REPO_RELEASES} {...ext}>
                   Download desktop
-                  <span className='arrow'>{arrowPlus}</span>
-                </a>
-                <a className='btn btn-ghost' href={PLUGINS_PAGE}>
-                  Browse plugins
                   <span className='arrow'>{arrowPlus}</span>
                 </a>
               </div>

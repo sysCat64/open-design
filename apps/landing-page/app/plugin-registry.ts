@@ -50,6 +50,7 @@ type RawOdMetadata = {
   taskKind?: unknown;
   capabilities?: unknown;
   preview?: unknown;
+  useCase?: unknown;
 };
 
 export type PublicPluginPreview = {
@@ -86,6 +87,7 @@ export type PublicPluginEntry = {
   surface: string | undefined;
   visualKind: string;
   preview: PublicPluginPreview | undefined;
+  exampleQuery: string | undefined;
   yanked: boolean;
   deprecated: boolean;
   searchText: string;
@@ -192,6 +194,28 @@ const previewLabelFor = (type: string | undefined) => {
   return 'Live HTML preview';
 };
 
+const localizedString = (value: unknown): string | undefined => {
+  const text = asString(value);
+  if (text) {
+    return text;
+  }
+
+  const record = asRecord(value);
+  return (
+    asString(record?.en) ??
+    asString(record?.['zh-CN']) ??
+    asString(record?.['zh']) ??
+    Object.values(record ?? {})
+      .map((item) => asString(item))
+      .find(Boolean)
+  );
+};
+
+const useCaseQuery = (value: unknown): string | undefined => {
+  const record = asRecord(value);
+  return localizedString(record?.query);
+};
+
 const localPluginPath = (pluginDir: string, entry: string): string | undefined => {
   const resolved = path.resolve(pluginDir, entry);
   const root = path.resolve(pluginDir);
@@ -199,6 +223,15 @@ const localPluginPath = (pluginDir: string, entry: string): string | undefined =
     return undefined;
   }
   return isFile(resolved) ? resolved : undefined;
+};
+
+const canRenderHtmlPreview = (filePath: string) => {
+  try {
+    const html = readFileSync(filePath, 'utf8');
+    return !/(?:src|href)=["'](?!https?:|\/\/|data:|#|mailto:|tel:)[^"']+/i.test(html);
+  } catch {
+    return false;
+  }
 };
 
 const previewFrom = (
@@ -236,12 +269,15 @@ const previewFrom = (
     const localHtmlPath =
       pluginDir && entry ? localPluginPath(pluginDir, entry) : undefined;
     if (localHtmlPath) {
+      const frameHref = canRenderHtmlPreview(localHtmlPath)
+        ? previewHrefFor(id)
+        : undefined;
       return {
         type: 'html',
         label: previewLabelFor('html'),
         poster,
-        frameHref: previewHrefFor(id),
-        localHtmlPath,
+        frameHref,
+        localHtmlPath: frameHref ? localHtmlPath : undefined,
       };
     }
   }
@@ -373,6 +409,7 @@ const entryFromMarketplace = (
     surface,
     visualKind: visualKindFor(title, tags, capabilities, mode, surface, preview),
     preview,
+    exampleQuery: undefined,
     yanked: asBoolean(rawEntry.yanked),
     deprecated: asBoolean(rawEntry.deprecated),
     searchText: [
@@ -462,6 +499,7 @@ const officialEntryFromManifest = (manifestPath: string): PublicPluginEntry | un
   const taskKind = asString(od?.taskKind);
   const surface = asString(od?.surface);
   const preview = previewFrom(pluginDir, id, od?.preview);
+  const exampleQuery = useCaseQuery(od?.useCase);
 
   return {
     id,
@@ -489,6 +527,7 @@ const officialEntryFromManifest = (manifestPath: string): PublicPluginEntry | un
     surface,
     visualKind: visualKindFor(title, tags, capabilities, mode, surface, preview),
     preview,
+    exampleQuery,
     yanked: false,
     deprecated: false,
     searchText: [
@@ -500,6 +539,7 @@ const officialEntryFromManifest = (manifestPath: string): PublicPluginEntry | un
       mode,
       taskKind,
       surface,
+      exampleQuery,
       ...tags,
       ...capabilities,
     ]
@@ -540,6 +580,7 @@ export const getPublicPlugins = (): PublicPluginEntry[] => {
         tags,
         capabilities,
         preview,
+        exampleQuery: existing.exampleQuery ?? entry.exampleQuery,
         visualKind: visualKindFor(
           existing.title,
           tags,

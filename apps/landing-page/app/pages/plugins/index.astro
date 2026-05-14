@@ -7,6 +7,20 @@ import { getPublicPlugins, getRegistryCounts } from '../../plugin-registry';
 
 const plugins = getPublicPlugins();
 const counts = getRegistryCounts(plugins);
+const previewCount = plugins.filter((plugin) => plugin.preview).length;
+const surfaceCount = new Set(
+  plugins.map((plugin) => plugin.mode ?? plugin.surface ?? plugin.visualKind),
+).size;
+const featuredPlugins = plugins
+  .filter((plugin) =>
+    Boolean(plugin.preview) ||
+    plugin.visualKind === 'deck' ||
+    plugin.visualKind === 'image' ||
+    plugin.visualKind === 'video',
+  )
+  .slice(0, 3);
+const showcasePlugins =
+  featuredPlugins.length >= 3 ? featuredPlugins : plugins.slice(0, 3);
 const site = Astro.site ?? new URL('https://open-design.ai');
 const canonical = new URL('/plugins/', site).toString();
 const title = 'Open Design Plugins — Official and community registries';
@@ -45,6 +59,14 @@ const breadcrumbJsonLd = {
     },
   ],
 };
+
+const displayKind = (plugin: (typeof plugins)[number]) =>
+  plugin.mode ?? plugin.surface ?? plugin.visualKind;
+
+const primaryMeta = (plugin: (typeof plugins)[number]) =>
+  [displayKind(plugin), plugin.preview?.label]
+    .filter(Boolean)
+    .join(' · ');
 ---
 
 <!doctype html>
@@ -98,12 +120,13 @@ const breadcrumbJsonLd = {
           <div class='container plugin-hero__grid'>
             <div>
               <span class='label'>Plugin Registry · public ecosystem</span>
-              <h1>Search official and community Open Design plugins.</h1>
+              <h1>Browse agent-native design plugins with live previews.</h1>
               <p>
-                Registry entries are published as portable marketplace JSON, then
-                installed through `od plugin install vendor/plugin-name`. Official
-                plugins are verified by Open Design; community sources stay
-                install-on-demand and can update without waiting for app releases.
+                Discover installable workflows, decks, image templates, design
+                systems, and atomic capabilities. Each entry keeps a stable
+                vendor/plugin ID, clear provenance, and a visual cue so browsing
+                the registry feels closer to choosing a creative tool than reading
+                a manifest dump.
               </p>
               <div class='plugin-hero__actions'>
                 <a class='btn btn-primary' href='#registry-results'>
@@ -114,21 +137,52 @@ const breadcrumbJsonLd = {
                 </a>
               </div>
             </div>
-            <div class='plugin-hero__panel' aria-label='Registry summary'>
-              <div>
-                <span>{counts.all}</span>
-                <small>Plugins indexed</small>
+            <aside class='plugin-hero__panel' aria-label='Registry preview'>
+              <div class='plugin-showcase__head'>
+                <span>Registry preview</span>
+                <strong>{counts.all}</strong>
+                <small>installable entries</small>
               </div>
-              <div>
-                <span>{counts.official}</span>
-                <small>Official</small>
+              <div class='plugin-showcase__list'>
+                {showcasePlugins.map((plugin, index) => (
+                  <a
+                    class={`plugin-showcase-item plugin-showcase-item--${plugin.visualKind}`}
+                    href={plugin.detailHref}
+                  >
+                    <span class='plugin-showcase-item__visual' aria-hidden='true'>
+                      {plugin.preview?.poster ? (
+                        <img src={plugin.preview.poster} alt='' loading='lazy' />
+                      ) : (
+                        <>
+                          <span />
+                          <span />
+                          <span />
+                        </>
+                      )}
+                    </span>
+                    <span class='plugin-showcase-item__copy'>
+                      <small>0{index + 1} · {displayKind(plugin)}</small>
+                      <strong>{plugin.title}</strong>
+                      <em>{plugin.id}</em>
+                    </span>
+                  </a>
+                ))}
               </div>
-              <div>
-                <span>{counts.community}</span>
-                <small>Community</small>
-              </div>
-              <code>plugins/registry/*/open-design-marketplace.json</code>
-            </div>
+              <dl class='plugin-hero__stats'>
+                <div>
+                  <dt>{counts.official}</dt>
+                  <dd>official</dd>
+                </div>
+                <div>
+                  <dt>{previewCount}</dt>
+                  <dd>with preview</dd>
+                </div>
+                <div>
+                  <dt>{surfaceCount}</dt>
+                  <dd>surfaces</dd>
+                </div>
+              </dl>
+            </aside>
           </div>
         </section>
 
@@ -169,6 +223,24 @@ const breadcrumbJsonLd = {
                   data-registry={plugin.registryId}
                   data-search={plugin.searchText}
                 >
+                  <a
+                    class={`plugin-card__preview plugin-card__preview--${plugin.visualKind}`}
+                    href={plugin.detailHref}
+                    aria-label={`Open ${plugin.title} details`}
+                  >
+                    {plugin.preview?.poster ? (
+                      <img src={plugin.preview.poster} alt='' loading='lazy' />
+                    ) : (
+                      <span class='plugin-card__mock' aria-hidden='true'>
+                        <span />
+                        <span />
+                        <span />
+                      </span>
+                    )}
+                    <span class='plugin-card__preview-label'>
+                      {primaryMeta(plugin)}
+                    </span>
+                  </a>
                   <div class='plugin-card__meta'>
                     <span class={`plugin-badge plugin-badge--${plugin.registryId}`}>
                       {plugin.registryName}

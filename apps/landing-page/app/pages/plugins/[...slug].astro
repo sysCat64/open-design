@@ -19,10 +19,40 @@ const canonical = new URL(plugin.detailHref, site).toString();
 const title = `${plugin.title} — Open Design Plugin`;
 const description = `${plugin.description} Install with ${plugin.installCommand}.`;
 const headerHtml = renderToStaticMarkup(createElement(Header));
-const deepLink = `od://plugins/${encodeURIComponent(plugin.id)}?source=${encodeURIComponent(plugin.registryId)}`;
 const related = getPublicPlugins()
   .filter((item) => item.id !== plugin.id && item.registryId === plugin.registryId)
   .slice(0, 6);
+const previewLabel = plugin.preview?.frameHref
+  ? 'Interactive preview'
+  : plugin.preview?.poster
+    ? plugin.preview.label
+    : `${plugin.visualKind} preview`;
+const detailLinks = [
+  {
+    href: plugin.registryUrl,
+    label: 'Marketplace JSON',
+  },
+  plugin.sourceUrl
+    ? {
+        href: plugin.sourceUrl,
+        label: 'Source repository',
+      }
+    : undefined,
+  plugin.homepage && plugin.homepage !== plugin.sourceUrl
+    ? {
+        href: plugin.homepage,
+        label: 'Homepage',
+      }
+    : undefined,
+].filter((item): item is { href: string; label: string } => Boolean(item));
+const factRows = [
+  ['Plugin ID', plugin.id],
+  ['Version', plugin.version],
+  ['Registry', plugin.registryName],
+  ['Mode', plugin.mode ?? plugin.surface ?? plugin.visualKind],
+  ['License', plugin.license ?? 'Not specified'],
+  plugin.publisher ? ['Publisher', plugin.publisher] : undefined,
+].filter((item): item is [string, string] => Boolean(item));
 const pluginJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
@@ -146,31 +176,41 @@ const breadcrumbJsonLd = {
                 </button>
               </div>
             </div>
-            <aside class='plugin-detail__facts' aria-label='Plugin facts'>
-              <dl>
-                <div>
-                  <dt>Plugin ID</dt>
-                  <dd>{plugin.id}</dd>
+            <aside class='plugin-detail-side' aria-label='Plugin preview and facts'>
+              <div class={`plugin-detail-preview plugin-detail-preview--${plugin.visualKind}`}>
+                <div class='plugin-detail-preview__head'>
+                  <span>{previewLabel}</span>
+                  <small>{plugin.preview?.type ?? plugin.visualKind}</small>
                 </div>
-                <div>
-                  <dt>Version</dt>
-                  <dd>{plugin.version}</dd>
+                <div class='plugin-detail-preview__frame'>
+                  {plugin.preview?.frameHref ? (
+                    <iframe
+                      src={plugin.preview.frameHref}
+                      title={`${plugin.title} preview`}
+                      loading='lazy'
+                      sandbox='allow-scripts allow-same-origin'
+                    ></iframe>
+                  ) : plugin.preview?.poster ? (
+                    <img src={plugin.preview.poster} alt='' loading='lazy' />
+                  ) : (
+                    <div class='plugin-detail-preview__mock' aria-hidden='true'>
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <dt>Registry</dt>
-                  <dd>{plugin.registryName}</dd>
-                </div>
-                <div>
-                  <dt>License</dt>
-                  <dd>{plugin.license ?? 'Not specified'}</dd>
-                </div>
-                {plugin.publisher && (
-                  <div>
-                    <dt>Publisher</dt>
-                    <dd>{plugin.publisher}</dd>
-                  </div>
-                )}
-              </dl>
+              </div>
+              <div class='plugin-detail__facts'>
+                <dl>
+                  {factRows.map(([label, value]) => (
+                    <div>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
             </aside>
           </div>
         </section>
@@ -187,20 +227,11 @@ const breadcrumbJsonLd = {
                 vendor/plugin-name ID.
               </p>
               <div class='plugin-source-list'>
-                <a href={plugin.registryUrl} target='_blank' rel='noreferrer noopener'>
-                  Marketplace JSON
-                </a>
-                {plugin.sourceUrl && (
-                  <a href={plugin.sourceUrl} target='_blank' rel='noreferrer noopener'>
-                    Source repository
+                {detailLinks.map((link) => (
+                  <a href={link.href} target='_blank' rel='noreferrer noopener'>
+                    {link.label}
                   </a>
-                )}
-                <a href={deepLink}>Open in desktop</a>
-                {plugin.homepage && (
-                  <a href={plugin.homepage} target='_blank' rel='noreferrer noopener'>
-                    Homepage
-                  </a>
-                )}
+                ))}
               </div>
             </div>
 
@@ -220,6 +251,18 @@ const breadcrumbJsonLd = {
                 </div>
               </div>
             </div>
+
+            {plugin.exampleQuery && (
+              <div class='plugin-detail-panel plugin-detail-panel--wide'>
+                <span class='label'>Example prompt</span>
+                <h2>How people use it</h2>
+                <p>
+                  The registry entry includes a ready-to-run prompt seed so the
+                  plugin can be evaluated without guessing its expected workflow.
+                </p>
+                <pre class='plugin-example-query'>{plugin.exampleQuery}</pre>
+              </div>
+            )}
           </div>
         </section>
 
