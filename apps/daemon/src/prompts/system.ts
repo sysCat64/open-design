@@ -151,9 +151,10 @@ export interface ComposeInput {
   designSystemTitle?: string | undefined;
   // Compiled (machine-readable) form of the active brand's design system,
   // shipped as sibling files to DESIGN.md when available. Both fields are
-  // optional and only injected when the daemon is running with the
-  // `OD_DESIGN_TOKEN_CHANNEL` env flag enabled (today's experimental
-  // gate). When present they are appended AFTER the DESIGN.md block so
+  // optional; the daemon populates them by default for every brand that
+  // ships `tokens.css` / `components.html` (today: `default` and
+  // `kami`). `OD_DESIGN_TOKEN_CHANNEL=0` disables the channel as a kill
+  // switch. When present they are appended AFTER the DESIGN.md block so
   // prose still sets the high-level voice and the structured form
   // disambiguates token names + worked component shapes.
   //
