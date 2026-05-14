@@ -1001,7 +1001,7 @@ describe('FileViewer tweaks toolbar', () => {
     });
   }
 
-  it('renders the toolbar Draw entry and no legacy picker/pod toggle', () => {
+  it('renders the toolbar Draw entry alongside restored Comment and Inspect entries', () => {
     render(
       <FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
         liveHtml='<html><body><main data-od-id="hero">Hero</main></body></html>'
@@ -1009,13 +1009,12 @@ describe('FileViewer tweaks toolbar', () => {
     );
 
     expect(screen.getByTestId('palette-tweaks-toggle')).toBeTruthy();
+    expect(screen.getByTestId('board-mode-toggle')).toBeTruthy();
+    expect(screen.getByTestId('inspect-mode-toggle')).toBeTruthy();
     expect(screen.getByTestId('draw-overlay-toggle')).toBeTruthy();
     expect(screen.queryByPlaceholderText('Type anywhere to add a note')).toBeNull();
-    expect(screen.queryByTestId('board-mode-toggle')).toBeNull();
     expect(screen.queryByTestId('comment-mode-toggle')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Pods' })).toBeNull();
-    expect(screen.queryByTestId('inspect-mode-toggle')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Inspect' })).toBeNull();
 
     fireEvent.click(screen.getByTestId('draw-overlay-toggle'));
     expect(screen.getByPlaceholderText('Type anywhere to add a note')).toBeTruthy();
