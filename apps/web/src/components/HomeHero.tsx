@@ -9,9 +9,10 @@
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import type { InstalledPluginRecord, McpServerConfig } from '@open-design/contracts';
+import type { InputFieldSpec, InstalledPluginRecord, McpServerConfig } from '@open-design/contracts';
 import type { SkillSummary } from '../types';
 import { Icon, type IconName } from './Icon';
+import { PluginInputsForm } from './PluginInputsForm';
 import {
   chipsForGroup,
   type ChipGroup,
@@ -27,11 +28,20 @@ interface Props {
   onPromptChange: (value: string) => void;
   onSubmit: HomeHeroSubmitHandler;
   activePluginTitle: string | null;
+  activePluginRecord?: InstalledPluginRecord | null;
   activeChipId: string | null;
   onClearActivePlugin: () => void;
   activeSkillId?: string | null;
   activeSkillTitle?: string | null;
   onClearActiveSkill?: () => void;
+  selectedPluginContexts?: InstalledPluginRecord[];
+  onRemovePluginContext?: (pluginId: string) => void;
+  onOpenPluginDetails?: (record: InstalledPluginRecord) => void;
+  pluginInputFields?: InputFieldSpec[];
+  pluginInputValues?: Record<string, unknown>;
+  pluginInputTemplate?: string | null;
+  onPluginInputValuesChange?: (values: Record<string, unknown>) => void;
+  onPluginInputValidityChange?: (valid: boolean) => void;
   pluginOptions: InstalledPluginRecord[];
   pluginsLoading: boolean;
   skillOptions?: SkillSummary[];
@@ -57,6 +67,7 @@ interface HomeMentionOption {
   title: string;
   description: string;
   meta: string;
+  pluginRecord?: InstalledPluginRecord;
   disabled?: boolean;
   onPick: () => void;
 }
@@ -73,11 +84,19 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
     onPromptChange,
     onSubmit,
     activePluginTitle,
+    activePluginRecord = null,
     activeSkillId = null,
     activeSkillTitle = null,
     activeChipId,
     onClearActivePlugin,
     onClearActiveSkill = () => undefined,
+    selectedPluginContexts = [],
+    onRemovePluginContext = () => undefined,
+    onOpenPluginDetails = () => undefined,
+    pluginInputFields = [],
+    pluginInputValues = {},
+    pluginInputTemplate = null,
+    onPluginInputValuesChange = () => undefined,
     pluginOptions,
     pluginsLoading,
     skillOptions = [],
@@ -98,6 +117,7 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
 ) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionTab, setMentionTab] = useState<HomeMentionTab>('all');
+  const [hoveredPlugin, setHoveredPlugin] = useState<InstalledPluginRecord | null>(null);
   const composingRef = useRef(false);
   const canSubmit = prompt.trim().length > 0 && !submitDisabled;
   const placeholder = activePluginTitle || activeSkillTitle
@@ -148,6 +168,7 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
             title: plugin.title,
             description: plugin.manifest?.description ?? plugin.id,
             meta: pendingPluginId === plugin.id ? 'Applying…' : getPluginSourceLabel(plugin),
+            pluginRecord: plugin,
             disabled: pendingPluginId !== null,
             onPick: () => pickPlugin(plugin),
           })),
@@ -188,13 +209,40 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
     (mentionTab === 'plugins' && pluginsLoading) ||
     (mentionTab === 'skills' && skillsLoading) ||
     (mentionTab === 'mcp' && mcpLoading);
+  const promptOverlayParts = useMemo(
+    () => buildPromptOverlayParts(
+      pluginInputTemplate,
+      pluginInputValues,
+      prompt,
+      selectedPluginContexts,
+    ),
+    [pluginInputTemplate, pluginInputValues, prompt, selectedPluginContexts],
+  );
+  const fieldByName = useMemo(
+    () => new Map(pluginInputFields.map((field) => [field.name, field])),
+    [pluginInputFields],
+  );
+  const inlineInputNames = useMemo(
+    () => getTemplateInputNames(pluginInputTemplate),
+    [pluginInputTemplate],
+  );
+  const remainingInputFields = useMemo(
+    () => pluginInputFields.filter((field) => !inlineInputNames.has(field.name)),
+    [inlineInputNames, pluginInputFields],
+  );
 
   useEffect(() => {
     if (selectedIndex >= visiblePickerOptions.length) setSelectedIndex(0);
   }, [selectedIndex, visiblePickerOptions.length]);
 
+  useEffect(() => {
+    if (!pickerOpen) setHoveredPlugin(null);
+  }, [pickerOpen]);
+
   function pickPlugin(record: InstalledPluginRecord) {
-    const nextPrompt = mention ? replaceMentionToken(prompt, mention) : null;
+    const nextPrompt = mention
+      ? replaceMentionTokenWithText(prompt, mention, pluginMentionText(record))
+      : prompt;
     onPickPlugin(record, nextPrompt);
   }
 
@@ -214,6 +262,14 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
     onPickMcp(server, nextPrompt);
   }
 
+  function updatePluginInput(name: string, value: unknown) {
+    onPluginInputValuesChange({ ...pluginInputValues, [name]: value });
+  }
+
+  function openActivePluginDetails() {
+    if (activePluginRecord) onOpenPluginDetails(activePluginRecord);
+  }
+
   let optionRenderIndex = 0;
 
   return (
@@ -231,12 +287,54 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
       </p>
 
       <div className="home-hero__input-card">
-        {activePluginTitle || activeSkillTitle ? (
+        {activePluginTitle || activeSkillTitle || selectedPluginContexts.length > 0 ? (
           <div className="home-hero__active">
+            {selectedPluginContexts.map((plugin) => (
+              <span
+                key={plugin.id}
+                className="home-hero__active-chip home-hero__active-chip--context"
+                data-testid={`home-hero-context-plugin-${plugin.id}`}
+              >
+                <button
+                  type="button"
+                  className="home-hero__active-chip-body"
+                  onClick={() => onOpenPluginDetails(plugin)}
+                  title={`Plugin: ${plugin.title}`}
+                >
+                  <span className="home-hero__active-dot" aria-hidden />
+                  <span>@{plugin.title}</span>
+                </button>
+                <button
+                  type="button"
+                  className="home-hero__active-clear"
+                  onClick={() => onRemovePluginContext(plugin.id)}
+                  aria-label={`Remove plugin ${plugin.title}`}
+                  title="Remove plugin"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
             {activePluginTitle ? (
               <span className="home-hero__active-chip" data-testid="home-hero-active-plugin">
-                <span className="home-hero__active-dot" aria-hidden />
-                <span>Plugin: {activePluginTitle}</span>
+                <button
+                  type="button"
+                  className="home-hero__active-chip-body"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    openActivePluginDetails();
+                  }}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    openActivePluginDetails();
+                  }}
+                  onClick={openActivePluginDetails}
+                  disabled={!activePluginRecord}
+                  title={activePluginRecord ? `Plugin: ${activePluginRecord.title}` : undefined}
+                >
+                  <span className="home-hero__active-dot" aria-hidden />
+                  <span>Plugin: {activePluginTitle}</span>
+                </button>
                 <button
                   type="button"
                   className="home-hero__active-clear"
@@ -273,64 +371,120 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
             ) : null}
           </div>
         ) : null}
-        <textarea
-          ref={ref}
-          className="home-hero__input"
-          data-testid="home-hero-input"
-          value={prompt}
-          onChange={(e) => {
-            onPromptChange(e.target.value);
-            setSelectedIndex(0);
-          }}
-          onCompositionStart={() => {
-            composingRef.current = true;
-          }}
-          onCompositionEnd={() => {
-            composingRef.current = false;
-          }}
-          onKeyDown={(e) => {
-            if (isImeComposing(e, composingRef.current)) return;
-            if (pickerOpen && visiblePickerOptions.length > 0) {
-              if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setSelectedIndex((idx) => (idx + 1) % visiblePickerOptions.length);
-                return;
-              }
-              if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setSelectedIndex(
-                  (idx) => (idx - 1 + visiblePickerOptions.length) % visiblePickerOptions.length,
-                );
-                return;
-              }
-              if (e.key === 'Tab') {
-                e.preventDefault();
-                const selected = visiblePickerOptions[selectedIndex] ?? visiblePickerOptions[0];
-                if (selected && !selected.disabled) selected.onPick();
-                return;
-              }
-            }
-            if (
-              e.key === 'Enter' &&
-              !e.shiftKey &&
-              !e.metaKey &&
-              !e.ctrlKey &&
-              !e.altKey
-            ) {
-              e.preventDefault();
-              if (pickerOpen && visiblePickerOptions.length > 0) {
-                const selected = visiblePickerOptions[selectedIndex] ?? visiblePickerOptions[0];
-                if (selected && !selected.disabled) selected.onPick();
-                return;
-              }
-              if (canSubmit) onSubmit();
-            }
-          }}
-          placeholder={placeholder}
-          rows={3}
-          aria-controls={pickerOpen ? 'home-hero-context-picker' : undefined}
-          aria-expanded={pickerOpen}
-        />
+        <div className="home-hero__prompt-surface">
+          <div
+            className={`home-hero__prompt-editor${
+              promptOverlayParts ? ' home-hero__prompt-editor--highlighted' : ''
+            }`}
+          >
+            {promptOverlayParts ? (
+              <div
+                className="home-hero__prompt-highlight"
+                data-testid="home-hero-prompt-highlight"
+              >
+                {promptOverlayParts.map((part, index) => (
+                  part.kind === 'slot' ? (
+                    <InlinePromptInput
+                      key={`${part.key}-${index}`}
+                      field={part.key ? fieldByName.get(part.key) ?? null : null}
+                      name={part.key ?? ''}
+                      value={part.key ? pluginInputValues[part.key] : undefined}
+                      fallbackText={part.text}
+                      filled={part.filled === true}
+                      onChange={(value) => {
+                        if (part.key) updatePluginInput(part.key, value);
+                      }}
+                    />
+                  ) : (
+                    part.kind === 'mention' ? (
+                      <button
+                        key={`${part.record.id}-${index}`}
+                        type="button"
+                        className="home-hero__prompt-mention"
+                        data-plugin-id={part.record.id}
+                        data-testid={`home-hero-prompt-plugin-${part.record.id}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => onOpenPluginDetails(part.record)}
+                        title={`Plugin: ${part.record.title}`}
+                      >
+                        @{part.record.title}
+                      </button>
+                    ) : (
+                      <span key={`text-${index}`} aria-hidden>
+                        {part.text}
+                      </span>
+                    )
+                  )
+                ))}
+              </div>
+            ) : null}
+            <textarea
+              ref={ref}
+              className="home-hero__input"
+              data-testid="home-hero-input"
+              value={prompt}
+              onChange={(e) => {
+                onPromptChange(e.target.value);
+                setSelectedIndex(0);
+              }}
+              onCompositionStart={() => {
+                composingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                composingRef.current = false;
+              }}
+              onKeyDown={(e) => {
+                if (isImeComposing(e, composingRef.current)) return;
+                if (pickerOpen && visiblePickerOptions.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setSelectedIndex((idx) => (idx + 1) % visiblePickerOptions.length);
+                    return;
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setSelectedIndex(
+                      (idx) => (idx - 1 + visiblePickerOptions.length) % visiblePickerOptions.length,
+                    );
+                    return;
+                  }
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const selected = visiblePickerOptions[selectedIndex] ?? visiblePickerOptions[0];
+                    if (selected && !selected.disabled) selected.onPick();
+                    return;
+                  }
+                }
+                if (
+                  e.key === 'Enter' &&
+                  !e.shiftKey &&
+                  !e.metaKey &&
+                  !e.ctrlKey &&
+                  !e.altKey
+                ) {
+                  e.preventDefault();
+                  if (pickerOpen && visiblePickerOptions.length > 0) {
+                    const selected = visiblePickerOptions[selectedIndex] ?? visiblePickerOptions[0];
+                    if (selected && !selected.disabled) selected.onPick();
+                    return;
+                  }
+                  if (canSubmit) onSubmit();
+                }
+              }}
+              placeholder={placeholder}
+              rows={3}
+              aria-controls={pickerOpen ? 'home-hero-context-picker' : undefined}
+              aria-expanded={pickerOpen}
+            />
+          </div>
+          {remainingInputFields.length > 0 ? (
+            <PluginInputsForm
+              fields={remainingInputFields}
+              values={pluginInputValues}
+              onChange={onPluginInputValuesChange}
+            />
+          ) : null}
+        </div>
         {pickerOpen ? (
           <div
             id="home-hero-context-picker"
@@ -385,7 +539,10 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
                       className={`home-hero__plugin-option${
                         optionIndex === selectedIndex ? ' is-active' : ''
                       }`}
-                      onMouseEnter={() => setSelectedIndex(optionIndex)}
+                      onMouseEnter={() => {
+                        setSelectedIndex(optionIndex);
+                        setHoveredPlugin(item.pluginRecord ?? null);
+                      }}
                       onMouseDown={(event) => {
                         event.preventDefault();
                         if (!item.disabled) item.onPick();
@@ -407,6 +564,33 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
                 })}
               </div>
             ))}
+            {hoveredPlugin ? (
+              <div
+                className="home-hero__plugin-hover-card"
+                data-testid="home-hero-plugin-hover-card"
+              >
+                <div>
+                  <span className="home-hero__plugin-hover-kicker">
+                    {getPluginSourceLabel(hoveredPlugin)}
+                  </span>
+                  <strong>{hoveredPlugin.title}</strong>
+                  <p>{hoveredPlugin.manifest?.description ?? hoveredPlugin.id}</p>
+                </div>
+                <div className="home-hero__plugin-hover-meta">
+                  <span>{(hoveredPlugin.manifest?.od?.inputs ?? []).length} parameters</span>
+                  {getPluginQueryPreview(hoveredPlugin) ? (
+                    <span>{getPluginQueryPreview(hoveredPlugin)}</span>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => onOpenPluginDetails(hoveredPlugin)}
+                >
+                  Details
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
         <div className="home-hero__input-foot">
@@ -467,18 +651,304 @@ interface ContextMention {
   query: string;
 }
 
+type PromptOverlayPart =
+  | {
+      kind: 'text';
+      text: string;
+    }
+  | {
+      kind: 'slot';
+      text: string;
+      key?: string;
+      filled?: boolean;
+    }
+  | {
+      kind: 'mention';
+      record: InstalledPluginRecord;
+    };
+
+interface PromptHighlightPart {
+  kind: 'text' | 'slot';
+  text: string;
+  key?: string;
+  filled?: boolean;
+}
+
+const INPUT_PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z_][\w-]*)\s*\}\}/g;
+
+function buildPromptHighlightParts(
+  template: string | null,
+  values: Record<string, unknown>,
+  prompt: string,
+): PromptHighlightPart[] | null {
+  if (!template) return null;
+  INPUT_PLACEHOLDER_PATTERN.lastIndex = 0;
+  const parts: PromptHighlightPart[] = [];
+  let rendered = '';
+  let lastIndex = 0;
+  let slotCount = 0;
+  let match: RegExpExecArray | null;
+  while ((match = INPUT_PLACEHOLDER_PATTERN.exec(template)) !== null) {
+    const placeholder = match[0];
+    const key = match[1];
+    if (!key) continue;
+    const literal = template.slice(lastIndex, match.index);
+    if (literal) {
+      parts.push({ kind: 'text', text: literal });
+      rendered += literal;
+    }
+    const replacement = stringifyTemplateValue(values[key], placeholder);
+    parts.push({
+      kind: 'slot',
+      key,
+      text: replacement.text,
+      filled: replacement.filled,
+    });
+    rendered += replacement.text;
+    slotCount += 1;
+    lastIndex = match.index + placeholder.length;
+  }
+  const tail = template.slice(lastIndex);
+  if (tail) {
+    parts.push({ kind: 'text', text: tail });
+    rendered += tail;
+  }
+  if (slotCount === 0 || rendered !== prompt) return null;
+  return parts;
+}
+
+function buildPromptOverlayParts(
+  template: string | null,
+  values: Record<string, unknown>,
+  prompt: string,
+  pluginContexts: InstalledPluginRecord[],
+): PromptOverlayPart[] | null {
+  const templateParts = buildPromptHighlightParts(template, values, prompt);
+  const baseParts: PromptOverlayPart[] = templateParts ?? [{ kind: 'text', text: prompt }];
+  const withMentions = injectPluginMentionParts(baseParts, pluginContexts);
+  if (templateParts || withMentions.some((part) => part.kind === 'mention')) {
+    return withMentions;
+  }
+  return null;
+}
+
+function injectPluginMentionParts(
+  parts: PromptOverlayPart[],
+  pluginContexts: InstalledPluginRecord[],
+): PromptOverlayPart[] {
+  if (pluginContexts.length === 0) return parts;
+  return parts.flatMap((part) => {
+    if (part.kind !== 'text') return [part];
+    return splitTextPartByPluginMentions(part.text, pluginContexts);
+  });
+}
+
+function splitTextPartByPluginMentions(
+  text: string,
+  pluginContexts: InstalledPluginRecord[],
+): PromptOverlayPart[] {
+  const result: PromptOverlayPart[] = [];
+  let index = 0;
+  while (index < text.length) {
+    let best: { record: InstalledPluginRecord; start: number; token: string } | null = null;
+    for (const record of pluginContexts) {
+      const token = pluginMentionText(record);
+      const start = text.indexOf(token, index);
+      if (start === -1) continue;
+      if (!best || start < best.start || (start === best.start && token.length > best.token.length)) {
+        best = { record, start, token };
+      }
+    }
+    if (!best) {
+      result.push({ kind: 'text', text: text.slice(index) });
+      break;
+    }
+    if (best.start > index) {
+      result.push({ kind: 'text', text: text.slice(index, best.start) });
+    }
+    result.push({ kind: 'mention', record: best.record });
+    index = best.start + best.token.length;
+  }
+  return result.length > 0 ? result : [{ kind: 'text', text }];
+}
+
+function pluginMentionText(record: InstalledPluginRecord): string {
+  return `@${record.title}`;
+}
+
+function stringifyTemplateValue(
+  value: unknown,
+  placeholder: string,
+): { text: string; filled: boolean } {
+  if (value === undefined || value === null || value === '') {
+    return { text: placeholder, filled: false };
+  }
+  return { text: String(value), filled: true };
+}
+
+function getTemplateInputNames(template: string | null): Set<string> {
+  const names = new Set<string>();
+  if (!template) return names;
+  INPUT_PLACEHOLDER_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = INPUT_PLACEHOLDER_PATTERN.exec(template)) !== null) {
+    const key = match[1];
+    if (key) names.add(key);
+  }
+  return names;
+}
+
+interface InlinePromptInputProps {
+  field: InputFieldSpec | null;
+  name: string;
+  value: unknown;
+  fallbackText: string;
+  filled: boolean;
+  onChange: (value: unknown) => void;
+}
+
+function InlinePromptInput({
+  field,
+  name,
+  value,
+  fallbackText,
+  filled,
+  onChange,
+}: InlinePromptInputProps) {
+  const label = field?.label ?? name;
+  const type = field ? inlineFieldType(field) : 'string';
+  const displayValue = value === undefined || value === null || value === ''
+    ? fallbackText
+    : String(value);
+  const commonProps = {
+    className: 'home-hero__prompt-slot home-hero__prompt-slot-control',
+    'data-field-name': name,
+    'data-filled': filled ? 'true' : 'false',
+    'data-testid': `home-hero-prompt-slot-${name}`,
+    'aria-label': label,
+    title: label,
+  };
+
+  if (field && type === 'select' && Array.isArray(field.options)) {
+    return (
+      <select
+        {...commonProps}
+        className={`${commonProps.className} home-hero__prompt-slot-select`}
+        value={value !== undefined && value !== null ? String(value) : ''}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">{field.placeholder ?? 'Select...'}</option>
+        {field.options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (field && type === 'number') {
+    return (
+      <input
+        {...commonProps}
+        className={`${commonProps.className} home-hero__prompt-slot-input`}
+        type="number"
+        value={value === undefined || value === null ? '' : String(value)}
+        placeholder={field.placeholder ?? fallbackText}
+        onChange={(event) => {
+          const raw = event.target.value;
+          if (raw === '') {
+            onChange(undefined);
+            return;
+          }
+          const parsed = Number(raw);
+          onChange(Number.isFinite(parsed) ? parsed : raw);
+        }}
+      />
+    );
+  }
+
+  if (field && type === 'boolean') {
+    const checked = Boolean(value);
+    return (
+      <button
+        {...commonProps}
+        type="button"
+        className={`${commonProps.className} home-hero__prompt-slot-toggle`}
+        aria-pressed={checked}
+        onClick={() => onChange(!checked)}
+      >
+        {checked ? 'true' : 'false'}
+      </button>
+    );
+  }
+
+  if (field && type === 'file') {
+    const fileLabel = fileInputLabel(value) ?? field.placeholder ?? fallbackText;
+    return (
+      <span
+        {...commonProps}
+        className={`${commonProps.className} home-hero__prompt-slot-file`}
+      >
+        <input
+          type="file"
+          aria-label={label}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            onChange(file ? fileMetadata(file) : undefined);
+          }}
+          {...(typeof field.accept === 'string' ? { accept: field.accept } : {})}
+        />
+        <span>{fileLabel}</span>
+      </span>
+    );
+  }
+
+  const width = `${Math.min(Math.max(displayValue.length + 1, 10), 52)}ch`;
+  return (
+    <input
+      {...commonProps}
+      className={`${commonProps.className} home-hero__prompt-slot-input`}
+      type="text"
+      value={value === undefined || value === null ? '' : String(value)}
+      placeholder={field?.placeholder ?? fallbackText}
+      onChange={(event) => onChange(event.target.value)}
+      style={{ width }}
+    />
+  );
+}
+
+function inlineFieldType(field: InputFieldSpec): string {
+  const rawType = (field as { type?: unknown }).type;
+  const raw = typeof rawType === 'string' ? rawType : 'string';
+  return raw === 'upload' ? 'file' : raw;
+}
+
+function fileMetadata(file: File) {
+  return {
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    lastModified: file.lastModified,
+  };
+}
+
+function fileInputLabel(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const name = (value as { name?: unknown }).name;
+  return typeof name === 'string' && name.length > 0 ? name : null;
+}
+
 function getContextMention(value: string): ContextMention | null {
-  const start = value.lastIndexOf('@');
-  if (start < 0) return null;
-  const before = value[start - 1];
-  if (before && !/\s/.test(before)) return null;
-  const tail = value.slice(start + 1);
-  const match = /^[^\s@]*/.exec(tail);
+  const match = /(^|\s)@([^\s@]*)$/.exec(value);
   if (!match) return null;
+  const prefix = match[1] ?? '';
+  const query = match[2] ?? '';
+  const start = match.index + prefix.length;
   return {
     start,
-    end: start + 1 + match[0].length,
-    query: match[0],
+    end: value.length,
+    query,
   };
 }
 
@@ -552,6 +1022,20 @@ function mcpServerMatchesQuery(server: McpServerConfig, query: string): boolean 
 
 function getPluginSourceLabel(plugin: InstalledPluginRecord): string {
   return plugin.sourceKind === 'bundled' ? 'Official' : 'My plugin';
+}
+
+function getPluginQueryPreview(plugin: InstalledPluginRecord): string {
+  const raw = plugin.manifest?.od?.useCase?.query;
+  const value =
+    typeof raw === 'string'
+      ? raw
+      : raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? raw.en ?? raw['zh-CN'] ?? Object.values(raw).find((entry): entry is string => (
+            typeof entry === 'string' && entry.length > 0
+          )) ?? ''
+        : '';
+  const trimmed = value.replace(/\s+/g, ' ').trim();
+  return trimmed.length > 96 ? `${trimmed.slice(0, 96)}…` : trimmed;
 }
 
 interface RailGroupProps {

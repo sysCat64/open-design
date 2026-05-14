@@ -69,12 +69,27 @@ const baseInput = (extra: Partial<Parameters<typeof createSnapshot>[1]> = {}) =>
 describe('snapshots writer', () => {
   it('createSnapshot inserts a row and round-trips via getSnapshot', () => {
     db.prepare('INSERT INTO projects (id, name) VALUES (?, ?)').run('project-1', 'Project 1');
-    const snap = createSnapshot(db, baseInput());
+    const snap = createSnapshot(db, baseInput({
+      sourceMarketplaceId: 'official',
+      sourceMarketplaceEntryName: 'open-design/sample-plugin',
+      sourceMarketplaceEntryVersion: '1.0.0',
+      marketplaceTrust: 'official',
+      resolvedSource: 'github:open-design/plugins@abc123/sample-plugin',
+      resolvedRef: 'abc123',
+      archiveIntegrity: 'sha512-fixture',
+    }));
     expect(snap.snapshotId).toMatch(/^[0-9a-f-]{36}$/);
     const fetched = getSnapshot(db, snap.snapshotId);
     expect(fetched).not.toBeNull();
     expect(fetched!.pluginId).toBe('sample-plugin');
     expect(fetched!.manifestSourceDigest).toBe('digest-1');
+    expect(fetched!.sourceMarketplaceId).toBe('official');
+    expect(fetched!.sourceMarketplaceEntryName).toBe('open-design/sample-plugin');
+    expect(fetched!.sourceMarketplaceEntryVersion).toBe('1.0.0');
+    expect(fetched!.marketplaceTrust).toBe('official');
+    expect(fetched!.resolvedSource).toBe('github:open-design/plugins@abc123/sample-plugin');
+    expect(fetched!.resolvedRef).toBe('abc123');
+    expect(fetched!.archiveIntegrity).toBe('sha512-fixture');
     expect(fetched!.status).toBe('fresh');
   });
 

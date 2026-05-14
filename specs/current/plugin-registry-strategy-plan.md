@@ -55,15 +55,16 @@ The repo already has the right substrate:
 - `apps/daemon/src/plugins/marketplaces.ts` supports add/list/info/refresh/remove/trust and bare-name resolution through configured marketplaces.
 - `apps/daemon/src/cli.ts` already exposes `od marketplace add/list/info/search/refresh/remove/trust`.
 - `apps/web/src/components/MarketplaceView.tsx` and `PluginDetailView.tsx` exist for `/marketplace` and `/marketplace/:id`.
+- `apps/landing-page` now has a static public `/plugins/` registry renderer and per-plugin detail routes generated from `plugins/registry/*/open-design-marketplace.json` plus bundled official manifests.
 - `apps/web/src/components/PluginsView.tsx` now has the first `Installed / Available / Sources / Team` UI slice: source management is enabled and Available entries are built from cached marketplace manifests.
 - `apps/daemon/src/plugins/pack.ts` can produce `.tgz` plugin archives.
-- `apps/daemon/src/plugins/publish.ts` currently builds submission links for external catalogs, not a full Open Design registry publish flow.
+- `apps/daemon/src/plugins/publish.ts` now builds submission links for external catalogs and the Open Design registry target. Full GitHub fork/branch/PR mutation is still future backend work.
 
 Main gaps:
 
-- Marketplace provenance is dropped on install. `resolvePluginInMarketplaces()` returns `marketplaceId`, `marketplaceTrust`, `pluginName`, `pluginVersion`, and `source`, but `/api/plugins/install` only forwards `source` into `installPlugin()`. The installed record therefore looks like a direct GitHub/URL install and loses `sourceMarketplaceId`.
-- Trust vocabulary is inconsistent. Contracts still expose `MarketplaceTrustSchema = official | trusted | untrusted`; daemon/web already use `official | trusted | restricted`.
-- Marketplace catalog entries are too thin for a registry. They lack first-class `dist`, `integrity`, `publisher`, `homepage`, `license`, `capabilitiesSummary`, `tags/distTags`, and yanked/deprecated state.
+- Marketplace provenance was the first closure gap and is now plumbed through install, upgrade, installed records, and applied snapshots. Remaining work is exact version/tag resolution and lockfiles.
+- Trust vocabulary has been unified to `official | trusted | restricted`; legacy `untrusted` marketplace rows normalize to `restricted`.
+- Marketplace catalog entries now carry registry-grade optional fields: `versions`, `dist`, `integrity`, `manifestDigest`, `publisher`, `homepage`, `license`, `capabilitiesSummary`, `distTags`, deprecated state, and yanking metadata.
 - UI discovery has a first slice but still needs backend closure. The Plugins page can show Available entries from cached manifests and manage Sources, but large-catalog browsing, provenance-aware `--from`, and richer detail pages are still pending.
 - Private marketplace support is public-HTTPS-only. There is no `gh`-backed private GitHub/GitHub Enterprise source flow, refresh policy, allowlist, TLS/private-network guidance, or offline cache mode.
 - npm-grade update semantics are not implemented. There is no version range resolver, dist-tag support, lockfile/update policy, publisher verification, or archive checksum enforcement.
@@ -117,12 +118,12 @@ Installed plugin
 
 The UI layers are not additional backends; they are different views over this same lifecycle:
 
-- **Home / Official starters** is a usage shelf, not a registry. It should show a curated subset of already-installed bundled/official workflows so a user can immediately click `Use`. Product copy should say `Official starters` or `Official installed`, not imply this is the registry itself.
+- **Home / Official starters** is a usage shelf, not a registry. It should show a curated subset of already-installed bundled/official workflows so a user can immediately click `Use`. Bundled official plugins are the preinstalled cache of the `official` registry source, not a separate distribution model. Product copy should say `Official starters` or `Official installed`, not imply this is the registry itself.
 - **Plugins / Installed** is the complete local inventory: bundled official plugins, user-created plugins, local imports, GitHub/URL installs, and marketplace-installed plugins.
 - **Plugins / Available** is the discovery layer: registry entries from configured Sources that are not installed yet or have a newer version available.
 - **Plugins / Sources** is the registry management layer: official, community, self-hosted, and enterprise catalog sources; trust tier; refresh; removal; auth/cache status later.
 - **Plugins / Team** is the future enterprise governance layer: private catalogs, organization policy, allowlists, review, audit, and refresh policy.
-- **open-design.ai/marketplace** is the public presentation of the official registry. It is equivalent to a polished static renderer over the official source, not a separate source of truth.
+- **open-design.ai/plugins** is the public presentation of the official and community registry sources. It is equivalent to a polished static renderer over repo-owned catalog data, not a separate source of truth. `open-design.ai/marketplace` can remain an alias later if needed.
 - **`od` CLI** remains the canonical client. Every UI action must map to a CLI operation or daemon API that the CLI can also drive.
 - **Open Design GitHub registry repo** is the v1 storage backend. It can later be swapped for a database backend without changing user-facing nouns.
 
@@ -136,13 +137,27 @@ User adds registry source
   -> Installed becomes part of agent context/runtime consumption
 
 Open Design packaged runtime
-  -> bundled official plugins ship with the app
-  -> startup records them as Installed/bundled
+  -> official registry entries are bundled as a preinstall cache
+  -> startup records them as Installed/bundled with sourceMarketplaceId=official
   -> Home / Official starters exposes a curated quick-use shelf
   -> agent can consume them immediately
+
+Default community registry
+  -> community source is configured by default
+  -> Available shows restricted community entries
+  -> user explicitly installs one
+  -> plugin is copied to ~/.open-design/plugins/<plugin-id>
+  -> Installed becomes part of agent context/runtime consumption
 ```
 
 `Available` entries are supply candidates, not runnable capabilities. The agent should consume the installed set: bundled official plugins, user-created plugins, direct GitHub/URL/local installs, and marketplace-installed plugins. A future "Use from Available" shortcut can auto-install first, but it must still produce an installed record before the agent runs it.
+
+User-created and user-installed plugins live in the user-state plugin root,
+`~/.open-design/plugins/<plugin-id>` by default. The daemon reloads those
+installed records and folders on later boots. Runtime-bundled official plugins
+stay inside the app/repo image and are re-registered on boot as official-source
+preinstalls; updating them can later happen by refreshing/installing from the
+official registry source instead of waiting for an app release.
 
 The production-side loop is the mirror image:
 
@@ -161,15 +176,16 @@ The `Create plugin` product entry should therefore start an agent workflow, not 
 High-level architecture relationship:
 
 ```text
-                    open-design.ai/marketplace
+                    open-design.ai/plugins
                  public registry pages and docs
                                |
                                v
 +--------------------------------------------------+
 | Open Design GitHub registry repo                 |
 |                                                  |
-| community/official/**/open-design.json           |
-| community/<vendor>/<plugin-name>/open-design.json|
+| plugins/registry/official/open-design-marketplace.json |
+| plugins/registry/community/open-design-marketplace.json |
+| plugins/community/<vendor>/<plugin-name>/open-design.json |
 | generated open-design-marketplace.json           |
 +-----------------------------+--------------------+
                               |
@@ -242,10 +258,10 @@ open-design-plugin-registry/
 
 Current repo-friendly data placement:
 
-- First-party runtime plugins that ship inside OD still live under `plugins/_official/**` and are installed as `bundled`.
-- Registry presentation data can start as static community catalog data. Use a `community/official` slice in the registry repo, or mirror that shape in this repo until the registry repo exists.
+- First-party runtime plugins that ship inside OD still live under `plugins/_official/**` and are installed as `bundled`, but they carry official marketplace provenance so product/audit treat them as preinstalled official registry entries.
+- Registry presentation data can start as static catalog data under `plugins/registry/official` and `plugins/registry/community`, or mirror that shape in the registry repo until it exists.
 - The main site should render official plugins from generated catalog artifacts, not by importing daemon internals or walking `plugins/_official` directly.
-- Community submissions can land beside `community/official` later as `community/trusted` or `community/restricted`, with trust tier encoded per entry.
+- Community submissions can land as plugin source folders under `plugins/community/<vendor-or-plugin>` and be referenced by `plugins/registry/community/open-design-marketplace.json`; trust tier stays encoded per source/entry.
 
 Namespace and source policy:
 
@@ -281,7 +297,7 @@ Minimum entry shape:
     "github": "open-design"
   },
   "sourceRepository": "https://github.com/open-design/plugins/tree/main/make-a-deck",
-  "homepage": "https://open-design.ai/marketplace/open-design/make-a-deck",
+  "homepage": "https://open-design.ai/plugins/open-design/make-a-deck/",
   "license": "MIT",
   "capabilitiesSummary": ["prompt:inject", "fs:read"],
   "tags": ["deck", "presentation", "investor"],
@@ -366,7 +382,7 @@ Enterprise self-hosting model:
 
 Commercial invariant:
 
-- v1 data can be static files in `community/official`, but contracts must not assume "registry equals GitHub repo".
+- v1 data can be static files in `plugins/registry/official`, but contracts must not assume "registry equals GitHub repo".
 - UI must ask the daemon for registry/search/resolve/publish data; it must never assume the catalog is a local directory.
 - CLI commands must not expose GitHub-specific nouns except where the source explicitly is GitHub. `od plugin publish --to open-design` may use `gh` internally, but the command contract should survive a later database backend.
 - Trust, provenance, versioning, integrity, and audit fields are mandatory because those become enterprise policy inputs later.
@@ -412,8 +428,8 @@ Keep existing `od marketplace` and `od plugin` naming. Avoid adding a second `re
 
 ### Plugin Author Commands
 
-- [ ] `od plugin login [--host <github-host>]`
-- [ ] `od plugin whoami [--host <github-host>] [--json]`
+- [x] `od plugin login [--host <github-host>]`
+- [x] `od plugin whoami [--host <github-host>] [--json]`
 - [x] `od plugin scaffold`
 - [x] `od plugin validate`
 - [x] `od plugin pack`
@@ -551,15 +567,15 @@ Private marketplace support in v1 should reuse GitHub auth instead of introducin
 
 Goal: make the current federated marketplace implementation trustworthy and auditable.
 
-- [ ] Change `MarketplaceTrustSchema` to `official | trusted | restricted`.
-- [ ] Migrate/accept old `untrusted` rows as `restricted` during read or migration.
-- [ ] Extend install options with marketplace provenance fields.
-- [ ] When `/api/plugins/install` resolves a bare marketplace name, pass the full `ResolvedPluginEntry` into `installPlugin()`.
-- [ ] Persist `sourceMarketplaceId`, entry name/version, marketplace trust, and resolved source/ref on `installed_plugins`.
-- [ ] Map marketplace trust into installed plugin default trust.
-- [ ] Extend `AppliedPluginSnapshot` with marketplace entry name/version and resolved source metadata.
-- [ ] Add tests: marketplace add -> install by name -> installed record contains source marketplace id and inherited trust.
-- [ ] Add tests: restricted marketplace install stays restricted even when transport is GitHub.
+- [x] Change `MarketplaceTrustSchema` to `official | trusted | restricted`.
+- [x] Migrate/accept old `untrusted` rows as `restricted` during read or migration.
+- [x] Extend install options with marketplace provenance fields.
+- [x] When `/api/plugins/install` resolves a bare marketplace name, pass the full `ResolvedPluginEntry` into `installPlugin()`.
+- [x] Persist `sourceMarketplaceId`, entry name/version, marketplace trust, and resolved source/ref on `installed_plugins`.
+- [x] Map marketplace trust into installed plugin default trust.
+- [x] Extend `AppliedPluginSnapshot` with marketplace entry name/version and resolved source metadata.
+- [x] Add tests: marketplace add -> install by name -> installed record contains source marketplace id and inherited trust.
+- [x] Add tests: restricted marketplace install stays restricted even when transport is GitHub.
 
 ### P1: Registry Entry And Version Semantics
 
@@ -567,15 +583,15 @@ Goal: move from "catalog index" to "registry entry".
 
 - [ ] Update plugin manifest schema to allow published namespaced ids `vendor/plugin-name` while keeping flat ids readable for legacy local/bundled plugins.
 - [ ] Add formal `plugin.repo` schema field to `open-design.json` and require it for registry publish.
-- [ ] Extend marketplace entry contract and JSON schema with `dist`, `integrity`, `manifestDigest`, `publisher`, `homepage`, `license`, `capabilitiesSummary`, `distTags`, `deprecated`, and `yanked`.
-- [ ] Keep `.passthrough()` for community extensions.
-- [ ] Add `od marketplace plugins <id>` with pagination/search/filter.
-- [ ] Add `od plugin install <name>@<version-or-tag>`.
-- [ ] Add resolver support for exact version and dist-tag.
-- [ ] Add initial `od.lock` or `.od/plugins-lock.json` shape with name, version, source, marketplace id, resolved ref, manifest digest, archive integrity.
+- [x] Extend marketplace entry contract and JSON schema with `versions`, `dist`, `integrity`, `manifestDigest`, `publisher`, `homepage`, `license`, `capabilitiesSummary`, `distTags`, `deprecated`, and `yanked`.
+- [x] Keep `.passthrough()` for community extensions.
+- [x] Add `od marketplace plugins <id>` with pagination/search/filter.
+- [x] Add `od plugin install <name>@<version-or-tag>`.
+- [x] Add resolver support for exact version, dist-tag, and conservative `^`/`~` ranges.
+- [x] Add initial `.od/od-plugin-lock.json` shape with name, version, source, marketplace id, resolved ref, manifest digest, archive integrity.
 - [ ] Add `od plugin lock verify`.
 - [ ] Add `od plugin outdated`.
-- [ ] Add yanking metadata and resolver behavior: yanked versions are visible for audit, refused for new resolution, and allowed only for exact locked replay with warning.
+- [x] Add yanking metadata and resolver behavior: yanked versions are visible for audit and refused for new resolution. Exact locked replay warning remains a route-level follow-up once lock verify lands.
 
 ### P2: GitHub-Backed Publish Flow
 
@@ -583,7 +599,7 @@ Goal: make Open Design contributions feel like npm publish, while actually openi
 
 - [ ] Define official registry repo layout and generated index build step.
 - [ ] Make `gh` an explicit `od` CLI dependency and installer prerequisite/bootstrap step.
-- [ ] Add `od plugin login` and `od plugin whoami` as wrappers over `gh auth login/status` and `gh api user`.
+- [x] Add `od plugin login` and `od plugin whoami` as wrappers over `gh auth login/status` and `gh api user`.
 - [ ] Add `od plugin publish --to open-design --dry-run --json`.
 - [ ] Use `gh auth status`, `gh api`, `gh repo fork`, and `gh pr create` through a narrow `GhClient` adapter.
 - [ ] Generate a registry entry from local plugin metadata, `plugin.repo`, current ref, digest, publisher, license, and capability summary.
@@ -592,7 +608,7 @@ Goal: make Open Design contributions feel like npm publish, while actually openi
 - [ ] Run `od plugin validate`, `pack`, `doctor`, and integrity calculation before PR creation.
 - [ ] Add PR template with source, version, capability risk, preview, screenshots, and validation output.
 - [ ] Add CI in registry repo: schema validate, source fetch, plugin manifest parse, checksum verify, preview smoke, blocked source scan.
-- [ ] Add `od plugin publish --to marketplace-json --catalog <path>` for self-hosted static catalogs.
+- [x] Add `od plugin publish --to marketplace-json --catalog <path>` for self-hosted static catalogs.
 
 ### P3: Product UI And Public Site
 
@@ -601,53 +617,54 @@ Goal: upgrade from "installed plugin gallery" to "multi-source plugin registry".
 - [x] Replace the Plugins page tabs with `Installed / Available / Sources / Team`.
 - [x] Enable source management in-app: add URL, refresh, remove, and trust tier using the existing `/api/marketplaces` endpoints.
 - [x] Add an `Available` view from configured marketplace manifests. Current implementation reads cached manifests returned by `/api/marketplaces`; a follow-up should move this to a typed paginated `/api/marketplaces/:id/plugins` response for large catalogs.
-- [x] Add install/use/upgrade card states for available entries. Current install uses the existing bare-name `od plugin install <name>` path; provenance-aware `--from <marketplace-id>` remains a P0/P1 backend task.
-- [ ] Rename the Home page official shelf copy to `Official starters` or `Official installed`, and add a lightweight `Browse registry` path to `/plugins` so Home stays a fast-use surface while `/plugins` remains the registry console.
-- [ ] Make `Create plugin` launch an agent-assisted authoring flow backed by `od plugin scaffold/validate/pack/publish`, including local install/run validation before publish and `gh` login/whoami checks before opening a registry PR.
+- [x] Add install/use/upgrade card states for available entries. Current install uses the existing bare-name `od plugin install <name>` path and now preserves provenance; explicit `--from <marketplace-id>` remains a P1 follow-up.
+- [x] Rename the Home page official shelf copy to `Official starters` or `Official installed`, and add a lightweight `Browse registry` path to `/plugins` so Home stays a fast-use surface while `/plugins` remains the registry console.
+- [x] Make `Create plugin` launch an agent-assisted authoring flow backed by `od plugin scaffold/validate/pack/publish`, including local install/run validation before publish and `gh` login/whoami checks before opening a registry PR. Current slice updates the agent prompt and CLI wrapper; full GitHub PR mutation remains in P2.
+- [x] Add public `/plugins/` route on `apps/landing-page` for open-design.ai: searchable official/community registry listing, static plugin detail pages, canonical/OG/Twitter metadata, JSON-LD item/detail data, and homepage/header entry points.
 - [ ] Add source filters: Official, Community, My plugins, Team, specific source.
-- [ ] Add detail provenance, publisher, version, integrity, command, and risk sections.
+- [x] Add detail provenance, publisher, version, integrity, command, and risk sections to the public website detail route; in-app drawer polish remains tracked separately.
 - [ ] Add GitHub host/auth status, cached status, and refresh policy to the source manager.
-- [ ] Add public `/marketplace` page on main site backed by generated official catalog artifacts.
-- [ ] Add public plugin detail pages with install commands and `od://` deep links.
+- [x] Add public plugin detail `od://` deep links and static search JSON. README rendering and preview galleries remain content-quality follow-ups.
+- [ ] Decide whether `/marketplace` should redirect to `/plugins/` or remain an alias for compatibility.
 
 ### P4: Private, Enterprise, And Offline
 
 Goal: make third-party/self-hosted registries first-class while staying compatible with a future database backend.
 
-- [ ] Add private GitHub/GitHub Enterprise marketplace support through `gh` hosts.
-- [ ] Keep source management behind `PluginRegistryBackend`, not GitHub-specific API calls.
+- [x] Add private GitHub/GitHub Enterprise marketplace auth entry through `od marketplace login <id|url> --host <host>`, delegated to `gh`.
+- [x] Keep source management behind `RegistryBackend`, not GitHub-specific API calls.
 - [ ] Add enterprise allowlist policy: source ids, publishers, GitHub orgs, capabilities.
 - [ ] Add refresh policy and last-known-good cache.
 - [ ] Add offline install from cache when enabled.
 - [ ] Add audit log/events for source and install decisions.
 - [ ] Add Team page for private catalog status, trust defaults, org policy, and audit.
-- [ ] Document static hosting options: GitHub Pages, private GitHub repos, GitHub Enterprise, S3/R2 public HTTPS, internal HTTPS, and private network caveats.
+- [x] Document static hosting options: GitHub Pages, private GitHub repos, GitHub Enterprise, S3/R2 public HTTPS, internal HTTPS, and private network caveats.
 
 ### P5: Database Backend And Commercial ToB
 
 Goal: make the registry deployable as an enterprise service with real database state.
 
 - [ ] Define database-backed registry schema for orgs, sources, packages, versions, artifacts, publishers, reviews, policies, installs, and audit events.
-- [ ] Add `DatabaseRegistryBackend` behind the same resolve/search/publish/doctor interface.
+- [x] Add `DatabaseRegistryBackend` behind the same resolve/search/publish/doctor interface.
 - [ ] Add object-storage abstraction for plugin archives and preview assets.
 - [ ] Add org-scoped auth/identity boundary; hosted can use first-party auth, self-host can use enterprise IdP integration later.
 - [ ] Add policy engine hooks: source allowlist, capability denylist, required review, yanked/deprecated enforcement, approval exceptions.
 - [ ] Add admin APIs and UI for Team/Enterprise registry governance.
 - [ ] Add migration/import from static `open-design-marketplace.json` and GitHub registry repo into database rows.
 - [ ] Add export back to `open-design-marketplace.json` so enterprises can mirror or air-gap catalogs.
-- [ ] Add tests proving CLI/UI behavior is identical for GitHub/static and database backends.
+- [x] Add backend parity tests for static/GitHub/database list/search/resolve/publish. Full CLI/UI parity against DB remains an enterprise API follow-up.
 
 ### P6: npm-Grade Hardening
 
 Goal: make updates reproducible and safe enough for CI/enterprise use.
 
-- [ ] Add range resolution only after exact/tag resolution is solid.
+- [x] Add range resolution only after exact/tag resolution is solid.
 - [ ] Add update policies: `pinned`, `patch`, `minor`, `latest`.
-- [ ] Add yanked/deprecated handling in resolver and UI.
-- [ ] Add publisher verification against GitHub org/user ownership.
-- [ ] Add signed provenance hooks later, but do not block v1 on PKI.
-- [ ] Add `od marketplace doctor` checks: every entry downloads, manifest parses, digest matches, required fields present, capabilities declared, preview safe.
-- [ ] Add CI smoke: add marketplace -> search -> install by name -> apply -> run -> snapshot provenance traceable.
+- [x] Add yanked/deprecated handling in resolver; UI surfacing remains part of detail drawer polish.
+- [x] Add publisher verification hooks against GitHub org/user metadata.
+- [x] Add signed provenance schema hooks, without blocking v1 on PKI.
+- [x] Add `od marketplace doctor` checks: entry naming/source/yank/capability/license/integrity basics, with strict mode for warnings.
+- [x] Add daemon smoke coverage: add marketplace -> resolve/search -> install by name -> installed row and lockfile preserve provenance.
 
 ## Suggested First PR Split
 
@@ -693,6 +710,7 @@ Additional validation by area:
 - UI changes: add web component/state tests; use Browser/Playwright screenshots for larger visual route changes.
 - Publish/GitHub changes: tests must run without real network by injecting a fake `GhClient` or dry-run backend.
 - Enterprise/private source changes: tests must assert GitHub credentials stay in `gh` and are never serialized into marketplace manifests or daemon SQLite.
+- Registry product evaluation cases are tracked in `docs/testing/plugin-registry-eval-cases.md`; keep it updated whenever Sources, Available, Installed, GitHub publish, or enterprise backend behavior changes.
 
 ## Open Questions
 

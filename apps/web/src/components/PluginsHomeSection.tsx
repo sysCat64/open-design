@@ -38,6 +38,8 @@ interface Props {
     action: PluginShareAction,
   ) => void;
   onCreatePlugin?: (goal?: string) => void;
+  onBrowseRegistry?: () => void;
+  preferDefaultFacet?: boolean;
   title?: string;
   subtitle?: string;
   emptyMessage?: string;
@@ -55,8 +57,10 @@ export function PluginsHomeSection({
   onOpenDetails,
   onPluginShareAction,
   onCreatePlugin,
-  title = 'Official',
-  subtitle = 'First-party Open Design workflows packaged as plugins. Pick one to load a starter prompt, or type freely above.',
+  onBrowseRegistry,
+  preferDefaultFacet = true,
+  title = 'Official starters',
+  subtitle = 'Ready-to-use Open Design workflows bundled with this runtime. Pick one to load a starter prompt, or browse the registry for more.',
   emptyMessage = 'Catalog is empty. Bundled plugins ship with Open Design and should appear here automatically — try restarting the daemon if this persists.',
 }: Props) {
   const {
@@ -74,7 +78,7 @@ export function PluginsHomeSection({
     query,
     setQuery,
     totalVisible,
-  } = usePluginFacets({ plugins });
+  } = usePluginFacets({ plugins, preferDefaultFacet });
   const contributionTarget = onCreatePlugin
     ? resolveContributionTarget(catalog, selection)
     : null;
@@ -92,6 +96,16 @@ export function PluginsHomeSection({
           </p>
         </div>
         <div className="plugins-home__head-tools">
+          {onBrowseRegistry ? (
+            <button
+              type="button"
+              className="plugins-home__linkbtn"
+              onClick={onBrowseRegistry}
+              data-testid="plugins-home-browse-registry"
+            >
+              Browse registry
+            </button>
+          ) : null}
           <SearchInput value={query} onChange={setQuery} />
           <span className="plugins-home__count">
             {loading ? '…' : `${filtered.length} of ${totalVisible}`}

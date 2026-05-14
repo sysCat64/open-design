@@ -402,12 +402,27 @@
 
 .plugins-view__source-row {
   display: flex;
+  align-items: stretch;
   gap: 8px;
+  min-width: 0;
 }
 
 .plugins-view__source-row input {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
+  width: auto;
+}
+
+.plugins-view__source-row select {
+  flex: 0 0 auto;
+  min-width: 140px;
+  width: 180px;
+}
+
+.plugins-view__source-row .plugins-view__primary {
+  flex: 0 0 auto;
+  min-width: 104px;
+  white-space: nowrap;
 }
 
 .plugins-view__source-help {
@@ -537,7 +552,6 @@
 }
 
 .plugins-import-modal__head h2,
-.plugins-import-modal__coming h3,
 .plugins-view__install-card h3 {
   margin: 0;
   color: var(--text-strong);
@@ -565,7 +579,7 @@
 
 .plugins-import-modal__tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -646,16 +660,6 @@
   display: none;
 }
 
-.plugins-import-modal__coming {
-  display: flex;
-  gap: 12px;
-  padding: 16px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-subtle);
-}
-
-.plugins-import-modal__coming p,
 .plugins-view__install-card p,
 .plugins-import-modal__foot p {
   margin: 4px 0 0;
@@ -694,6 +698,13 @@
 
   .plugins-view__source-row {
     flex-direction: column;
+  }
+
+  .plugins-view__source-row input,
+  .plugins-view__source-row select,
+  .plugins-view__source-row .plugins-view__primary {
+    flex: 0 0 auto;
+    width: 100%;
   }
 
   .plugins-import-modal__tabs {

@@ -26,6 +26,7 @@ import {
 } from '@open-design/plugin-runtime';
 import type {
   InstalledPluginRecord,
+  MarketplaceTrust,
   PluginManifest,
   PluginSourceKind,
   TrustTier,
@@ -66,6 +67,14 @@ export interface ResolveOptions {
   pinnedRef?: string;
   trust?: TrustTier;
   capabilitiesGranted?: string[];
+  sourceMarketplaceId?: string;
+  sourceMarketplaceEntryName?: string;
+  sourceMarketplaceEntryVersion?: string;
+  marketplaceTrust?: MarketplaceTrust;
+  resolvedSource?: string;
+  resolvedRef?: string;
+  manifestDigest?: string;
+  archiveIntegrity?: string;
 }
 
 export interface ResolveOutcome {
@@ -160,7 +169,14 @@ export async function resolvePluginFolder(opts: ResolveOptions): Promise<Resolve
     sourceKind: opts.sourceKind ?? 'local',
     source: opts.source ?? folder,
     pinnedRef: opts.pinnedRef,
-    sourceMarketplaceId: undefined,
+    sourceMarketplaceId: opts.sourceMarketplaceId,
+    sourceMarketplaceEntryName: opts.sourceMarketplaceEntryName,
+    sourceMarketplaceEntryVersion: opts.sourceMarketplaceEntryVersion,
+    marketplaceTrust: opts.marketplaceTrust,
+    resolvedSource: opts.resolvedSource,
+    resolvedRef: opts.resolvedRef,
+    manifestDigest: opts.manifestDigest,
+    archiveIntegrity: opts.archiveIntegrity,
     trust: opts.trust ?? 'restricted',
     capabilitiesGranted: opts.capabilitiesGranted ?? defaultRestrictedCapabilities(),
     manifest,
@@ -193,6 +209,13 @@ export function rowToInstalledPlugin(row: DbRow): InstalledPluginRecord {
     pinnedRef:           row['pinned_ref'] != null ? String(row['pinned_ref']) : undefined,
     sourceDigest:        row['source_digest'] != null ? String(row['source_digest']) : undefined,
     sourceMarketplaceId: row['source_marketplace_id'] != null ? String(row['source_marketplace_id']) : undefined,
+    sourceMarketplaceEntryName: row['source_marketplace_entry_name'] != null ? String(row['source_marketplace_entry_name']) : undefined,
+    sourceMarketplaceEntryVersion: row['source_marketplace_entry_version'] != null ? String(row['source_marketplace_entry_version']) : undefined,
+    marketplaceTrust:    row['marketplace_trust'] != null ? row['marketplace_trust'] as MarketplaceTrust : undefined,
+    resolvedSource:      row['resolved_source'] != null ? String(row['resolved_source']) : undefined,
+    resolvedRef:         row['resolved_ref'] != null ? String(row['resolved_ref']) : undefined,
+    manifestDigest:      row['manifest_digest'] != null ? String(row['manifest_digest']) : undefined,
+    archiveIntegrity:    row['archive_integrity'] != null ? String(row['archive_integrity']) : undefined,
     trust:               row['trust'] as TrustTier,
     capabilitiesGranted: Array.isArray(capabilities) ? capabilities : [],
     manifest,
@@ -216,10 +239,13 @@ export function upsertInstalledPlugin(db: SqliteDb, record: InstalledPluginRecor
   db.prepare(`
     INSERT INTO installed_plugins (
       id, title, version, source_kind, source, pinned_ref, source_digest,
-      source_marketplace_id, trust, capabilities_granted, manifest_json,
+      source_marketplace_id, source_marketplace_entry_name,
+      source_marketplace_entry_version, marketplace_trust, resolved_source,
+      resolved_ref, manifest_digest, archive_integrity,
+      trust, capabilities_granted, manifest_json,
       fs_path, installed_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
       version = excluded.version,
@@ -228,6 +254,13 @@ export function upsertInstalledPlugin(db: SqliteDb, record: InstalledPluginRecor
       pinned_ref = excluded.pinned_ref,
       source_digest = excluded.source_digest,
       source_marketplace_id = excluded.source_marketplace_id,
+      source_marketplace_entry_name = excluded.source_marketplace_entry_name,
+      source_marketplace_entry_version = excluded.source_marketplace_entry_version,
+      marketplace_trust = excluded.marketplace_trust,
+      resolved_source = excluded.resolved_source,
+      resolved_ref = excluded.resolved_ref,
+      manifest_digest = excluded.manifest_digest,
+      archive_integrity = excluded.archive_integrity,
       trust = excluded.trust,
       capabilities_granted = excluded.capabilities_granted,
       manifest_json = excluded.manifest_json,
@@ -242,6 +275,13 @@ export function upsertInstalledPlugin(db: SqliteDb, record: InstalledPluginRecor
     record.pinnedRef ?? null,
     record.sourceDigest ?? null,
     record.sourceMarketplaceId ?? null,
+    record.sourceMarketplaceEntryName ?? null,
+    record.sourceMarketplaceEntryVersion ?? null,
+    record.marketplaceTrust ?? null,
+    record.resolvedSource ?? null,
+    record.resolvedRef ?? null,
+    record.manifestDigest ?? null,
+    record.archiveIntegrity ?? null,
     record.trust,
     JSON.stringify(record.capabilitiesGranted ?? []),
     JSON.stringify(record.manifest),

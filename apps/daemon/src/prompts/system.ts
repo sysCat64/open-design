@@ -94,6 +94,7 @@ type ProjectMetadata = {
   platform?: string | null;
   platformTargets?: string[] | null;
   inspirationDesignSystemIds?: string[];
+  skipDiscoveryBrief?: boolean | null;
   imageModel?: string | null;
   imageAspect?: string | null;
   imageStyle?: string | null;
@@ -121,6 +122,11 @@ type ProjectMetadata = {
       url?: string | null;
     } | null;
   } | null;
+  contextPlugins?: Array<{
+    id?: string | null;
+    title?: string | null;
+    description?: string | null;
+  }> | null;
 };
 type ProjectTemplate = { name: string; description?: string | null; files: Array<{ name: string; content: string }> };
 type AudioVoiceOption = {
@@ -131,6 +137,10 @@ type AudioVoiceOption = {
 };
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
+
+export const SKIP_DISCOVERY_BRIEF_OVERRIDE = `# Automated project mode — skip discovery form
+
+This project was created through the daemon API with \`skipDiscoveryBrief: true\`. Override the discovery rules below: do NOT emit \`<question-form id="discovery">\`, do NOT show "Quick brief — 30 seconds", and do NOT ask a first-turn clarification form. Treat the user's first message and project metadata as the brief, then proceed directly to planning/building under the normal artifact workflow. Ask at most one concise follow-up only if a required detail is impossible to infer safely.`;
 
 export interface ComposeInput {
   agentId?: string | null | undefined;
@@ -151,9 +161,10 @@ export interface ComposeInput {
   designSystemTitle?: string | undefined;
   // Compiled (machine-readable) form of the active brand's design system,
   // shipped as sibling files to DESIGN.md when available. Both fields are
-  // optional and only injected when the daemon is running with the
-  // `OD_DESIGN_TOKEN_CHANNEL` env flag enabled (today's experimental
-  // gate). When present they are appended AFTER the DESIGN.md block so
+  // optional; the daemon populates them by default for every brand that
+  // ships `tokens.css` / `components.html` (today: `default` and
+  // `kami`). `OD_DESIGN_TOKEN_CHANNEL=0` disables the channel as a kill
+  // switch. When present they are appended AFTER the DESIGN.md block so
   // prose still sets the high-level voice and the structured form
   // disambiguates token names + worked component shapes.
   //
@@ -280,6 +291,11 @@ export function composeSystemPrompt({
   // behaviour.
   if (streamFormat === 'plain') {
     parts.push(API_MODE_OVERRIDE);
+    parts.push('\n\n---\n\n');
+  }
+
+  if (metadata?.skipDiscoveryBrief === true) {
+    parts.push(SKIP_DISCOVERY_BRIEF_OVERRIDE);
     parts.push('\n\n---\n\n');
   }
 
@@ -796,6 +812,25 @@ function renderMetadataBlock(
     lines.push(
       `- **inspirationDesignSystemIds**: ${metadata.inspirationDesignSystemIds.join(', ')} — the user picked these systems as *additional* inspiration alongside the primary one. Borrow palette accents, typographic personality, or component patterns from them; don't replace the primary system's tokens.`,
     );
+  }
+
+  if (Array.isArray(metadata.contextPlugins) && metadata.contextPlugins.length > 0) {
+    lines.push('');
+    lines.push('### @ plugin context');
+    lines.push(
+      'The user selected these plugins as additive context via @ mentions. Treat them as requested references to combine with the brief; only the explicit active plugin block, if present, is the executable/pinned plugin snapshot.',
+    );
+    for (const plugin of metadata.contextPlugins) {
+      const id = typeof plugin.id === 'string' ? plugin.id : '';
+      const title = typeof plugin.title === 'string' && plugin.title.trim().length > 0
+        ? plugin.title.trim()
+        : id;
+      if (!id && !title) continue;
+      const description = typeof plugin.description === 'string' && plugin.description.trim().length > 0
+        ? ` — ${plugin.description.trim()}`
+        : '';
+      lines.push(`- ${title}${id ? ` (\`${id}\`)` : ''}${description}`);
+    }
   }
 
   // Curated prompt template reference for image/video projects. Inlined

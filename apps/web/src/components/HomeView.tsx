@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ApplyResult,
+  InputFieldSpec,
   McpServerConfig,
   InstalledPluginRecord,
   ProjectKind,
@@ -27,8 +28,10 @@ import type { Project, SkillSummary } from '../types';
 import { HomeHero } from './HomeHero';
 import { findChip, type HomeHeroChip } from './home-hero/chips';
 import {
-  buildPluginAuthoringPrompt,
+  buildPluginAuthoringInputs,
+  buildPluginAuthoringPromptForInputs,
   PLUGIN_AUTHORING_PROMPT,
+  PLUGIN_AUTHORING_PROMPT_TEMPLATE,
   type HomePromptHandoff,
 } from './home-hero/plugin-authoring';
 import { PluginDetailsModal } from './PluginDetailsModal';
@@ -45,6 +48,10 @@ interface ActivePlugin {
   // is safe to render without a result.
   result: ApplyResult | null;
   inputs: Record<string, unknown>;
+  inputFields: InputFieldSpec[];
+  inputsValid: boolean;
+  queryTemplate: string | null;
+  lastRenderedPrompt: string | null;
   // Stage B of plugin-driven-flow-plan: when the user applied this
   // plugin through the Home chip rail, the chip carries the project
   // kind we should stamp on the resulting create payload. `null` =
@@ -52,6 +59,20 @@ interface ActivePlugin {
   // kind defaults to the historical 'prototype' value.
   projectKind: ProjectKind | null;
   chipId: string | null;
+}
+
+interface SelectedPluginContext {
+  record: InstalledPluginRecord;
+}
+
+interface PendingReplacement {
+  title: string;
+  confirm: () => void;
+}
+
+interface PendingPluginUseHandoff {
+  pluginId: string;
+  inputs?: Record<string, unknown>;
 }
 
 const AUTHORING_DEFAULT_SCENARIO_INPUTS = {
@@ -66,6 +87,7 @@ interface Props {
   onSubmit: (payload: PluginLoopSubmit) => void;
   onOpenProject: (id: string) => void;
   onViewAllProjects: () => void;
+  onBrowseRegistry?: () => void;
   // Stage B: optional callbacks the rail's migration chips need.
   // HomeView itself never imports them; EntryShell threads them
   // through so the dispatcher can stay declarative.
@@ -82,6 +104,7 @@ export function HomeView({
   onSubmit,
   onOpenProject,
   onViewAllProjects,
+  onBrowseRegistry,
   onImportFolder,
   onOpenNewProject,
   promptHandoff,
@@ -95,14 +118,21 @@ export function HomeView({
   const [pendingChipId, setPendingChipId] = useState<string | null>(null);
   const [pendingAuthoringChipId, setPendingAuthoringChipId] = useState<string | null>(null);
   const [pendingAuthoringPrompt, setPendingAuthoringPrompt] = useState(PLUGIN_AUTHORING_PROMPT);
+  const [pendingAuthoringInputs, setPendingAuthoringInputs] = useState<Record<string, unknown>>(
+    () => buildPluginAuthoringInputs(undefined),
+  );
+  const [pendingPluginUseHandoff, setPendingPluginUseHandoff] =
+    useState<PendingPluginUseHandoff | null>(null);
   const [fallbackProjectKind, setFallbackProjectKind] = useState<ProjectKind | null>(null);
   const [active, setActive] = useState<ActivePlugin | null>(null);
   const [activeSkill, setActiveSkill] = useState<SkillSummary | null>(null);
+  const [selectedPluginContexts, setSelectedPluginContexts] = useState<SelectedPluginContext[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
   const [mcpLoading, setMcpLoading] = useState(true);
   const [prompt, setPrompt] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [detailsRecord, setDetailsRecord] = useState<InstalledPluginRecord | null>(null);
+  const [pendingReplacement, setPendingReplacement] = useState<PendingReplacement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const consumedHandoffIdRef = useRef<number | null>(null);
 
@@ -138,22 +168,34 @@ export function HomeView({
   useEffect(() => {
     if (!promptHandoff || consumedHandoffIdRef.current === promptHandoff.id) return;
     consumedHandoffIdRef.current = promptHandoff.id;
+    setError(null);
+    if (promptHandoff.source === 'plugin-use') {
+      setPendingPluginUseHandoff({
+        pluginId: promptHandoff.pluginId,
+        ...(promptHandoff.inputs ? { inputs: promptHandoff.inputs } : {}),
+      });
+      if (promptHandoff.focus) {
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }
+      return;
+    }
+
     setActive(null);
     setActiveSkill(null);
-    setError(null);
-    setFallbackProjectKind(promptHandoff.source === 'plugin-authoring' ? 'other' : null);
+    setSelectedPluginContexts([]);
+    setFallbackProjectKind('other');
     setPrompt(promptHandoff.prompt);
+    setPendingAuthoringPrompt(promptHandoff.prompt);
+    setPendingAuthoringInputs(promptHandoff.inputs);
     if (promptHandoff.focus) {
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-    if (promptHandoff.source === 'plugin-authoring') {
-      setPendingAuthoringChipId('plugin-authoring');
-    }
+    setPendingAuthoringChipId('create-plugin');
   }, [promptHandoff]);
 
   const contextItemCount = useMemo(
-    () => active?.result?.contextItems?.length ?? 0,
-    [active],
+    () => (active?.result?.contextItems?.length ?? 0) + selectedPluginContexts.length,
+    [active, selectedPluginContexts],
   );
 
   // When the active plugin was bound through a chip, the badge shows
@@ -183,9 +225,28 @@ export function HomeView({
   async function usePlugin(
     record: InstalledPluginRecord,
     nextPrompt?: string | null,
-    options?: { projectKind?: ProjectKind; chipId?: string; inputs?: Record<string, unknown> },
+    options?: {
+      projectKind?: ProjectKind;
+      chipId?: string;
+      inputs?: Record<string, unknown>;
+      queryTemplate?: string | null;
+    },
   ) {
-    setPendingApplyId(record.id);
+    const inputFields = record.manifest?.od?.inputs ?? [];
+    const optimisticInputs = hydratePluginInputs(inputFields, options?.inputs);
+    const inputsValid = pluginInputsAreValid(inputFields, optimisticInputs);
+    const queryTemplate =
+      options?.queryTemplate !== undefined
+        ? options.queryTemplate
+        : nextPrompt !== undefined && nextPrompt !== null
+        ? null
+        : resolvePluginQueryFallback(record.manifest?.od?.useCase?.query, locale) || null;
+    const optimisticPrompt =
+      nextPrompt !== undefined && nextPrompt !== null
+        ? nextPrompt
+        : queryTemplate
+          ? renderPluginBriefTemplate(queryTemplate, optimisticInputs)
+          : null;
     if (options?.chipId) setPendingChipId(options.chipId);
     setError(null);
     // Optimistic update: the chip already carries the inputs and the
@@ -196,21 +257,14 @@ export function HomeView({
     // items in the background and we reconcile in place. Without this
     // the user sees a ~100-500ms freeze before the input back-fills,
     // which feels like the UI is jammed.
-    const optimisticInputs: Record<string, unknown> = { ...(options?.inputs ?? {}) };
-    const manifestQuery = resolvePluginQueryFallback(
-      record.manifest?.od?.useCase?.query,
-      locale,
-    );
-    const optimisticPrompt =
-      nextPrompt !== undefined && nextPrompt !== null
-        ? nextPrompt
-        : manifestQuery
-          ? renderPluginBriefTemplate(manifestQuery, optimisticInputs)
-          : null;
     setActive({
       record,
       result: null,
       inputs: optimisticInputs,
+      inputFields,
+      inputsValid,
+      queryTemplate,
+      lastRenderedPrompt: optimisticPrompt,
       projectKind: options?.projectKind ?? null,
       chipId: options?.chipId ?? null,
     });
@@ -219,15 +273,18 @@ export function HomeView({
     if (optimisticPrompt !== null) setPrompt(optimisticPrompt);
     requestAnimationFrame(() => inputRef.current?.focus());
 
-    const result = await applyPlugin(record.id, { locale, inputs: options?.inputs });
-    setPendingApplyId(null);
-    setPendingChipId(null);
+    if (!inputsValid) {
+      setPendingChipId(null);
+      return;
+    }
+
+    const result = await resolveActivePlugin(record, optimisticInputs);
     if (!result) {
       // Roll back the optimistic active so submit can't fire against a
       // plugin that never bound. Only clear when the in-flight apply
       // still matches the visible active state — concurrent clicks
       // would otherwise stomp a successful later apply.
-      setActive((prev) => (prev?.record.id === record.id ? null : prev));
+      setActive((prev) => (prev?.record.id === record.id ? { ...prev, inputsValid: false } : prev));
       setError(`Failed to apply ${record.title}. Make sure the daemon is reachable.`);
       return;
     }
@@ -239,7 +296,13 @@ export function HomeView({
     }
     setActive((prev) =>
       prev && prev.record.id === record.id
-        ? { ...prev, result, inputs: reconciledInputs }
+        ? {
+            ...prev,
+            result,
+            inputs: reconciledInputs,
+            inputFields: result.inputs ?? inputFields,
+            inputsValid: pluginInputsAreValid(result.inputs ?? inputFields, reconciledInputs),
+          }
         : prev,
     );
     // The daemon may have filled in `topic`/`audience` defaults the
@@ -257,9 +320,153 @@ export function HomeView({
         const reconciledPrompt = renderPluginBriefTemplate(reconciledQuery, reconciledInputs);
         if (reconciledPrompt !== optimisticPrompt) {
           setPrompt((current) => (current === optimisticPrompt ? reconciledPrompt : current));
+          setActive((prev) =>
+            prev && prev.record.id === record.id
+              ? { ...prev, lastRenderedPrompt: reconciledPrompt }
+              : prev,
+          );
         }
       }
     }
+  }
+
+  async function resolveActivePlugin(
+    record: InstalledPluginRecord,
+    inputs: Record<string, unknown>,
+  ): Promise<ApplyResult | null> {
+    setPendingApplyId(record.id);
+    const result = await applyPlugin(record.id, { locale, inputs });
+    setPendingApplyId(null);
+    setPendingChipId(null);
+    return result;
+  }
+
+  function requestUsePlugin(
+    record: InstalledPluginRecord,
+    nextPrompt?: string | null,
+    options?: {
+      projectKind?: ProjectKind;
+      chipId?: string;
+      inputs?: Record<string, unknown>;
+      queryTemplate?: string | null;
+    },
+  ) {
+    const replacement = previewPluginReplacement(record, nextPrompt, options?.inputs);
+    runWithReplacementConfirmation(record.title, replacement, () => {
+      void usePlugin(record, nextPrompt, options);
+    });
+  }
+
+  function runWithReplacementConfirmation(
+    title: string,
+    replacementPrompt: string | null,
+    confirm: () => void,
+  ) {
+    if (
+      replacementPrompt !== null &&
+      prompt.trim().length > 0 &&
+      prompt.trim() !== replacementPrompt.trim()
+    ) {
+      setPendingReplacement({ title, confirm });
+      return;
+    }
+    confirm();
+  }
+
+  function previewPluginReplacement(
+    record: InstalledPluginRecord,
+    nextPrompt?: string | null,
+    inputs?: Record<string, unknown>,
+  ): string | null {
+    if (nextPrompt !== undefined && nextPrompt !== null) return nextPrompt;
+    const query = resolvePluginQueryFallback(record.manifest?.od?.useCase?.query, locale);
+    if (!query) return null;
+    return renderPluginBriefTemplate(query, hydratePluginInputs(record.manifest?.od?.inputs ?? [], inputs));
+  }
+
+  useEffect(() => {
+    if (!pendingPluginUseHandoff || pluginsLoading) return;
+    const record = plugins.find((plugin) => plugin.id === pendingPluginUseHandoff.pluginId);
+    setPendingPluginUseHandoff(null);
+    if (!record) {
+      setError(
+        `Plugin "${pendingPluginUseHandoff.pluginId}" is not installed. Refresh Plugins and try again.`,
+      );
+      return;
+    }
+    requestUsePlugin(
+      record,
+      undefined,
+      pendingPluginUseHandoff.inputs
+        ? { inputs: pendingPluginUseHandoff.inputs }
+        : undefined,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPluginUseHandoff, pluginsLoading, plugins]);
+
+  function addPluginContext(record: InstalledPluginRecord, nextPrompt: string | null) {
+    setSelectedPluginContexts((prev) => {
+      if (prev.some((item) => item.record.id === record.id)) return prev;
+      return [...prev, { record }];
+    });
+    if (nextPrompt !== null) setPrompt(nextPrompt);
+    setError(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function removePluginContext(pluginId: string) {
+    const record = selectedPluginContexts.find((item) => item.record.id === pluginId)?.record ?? null;
+    setSelectedPluginContexts((prev) => prev.filter((item) => item.record.id !== pluginId));
+    if (record) {
+      setPrompt((current) => removePluginMentionFromPrompt(current, record));
+    }
+  }
+
+  function handlePromptChange(nextPrompt: string) {
+    setPrompt(nextPrompt);
+    if (!active?.queryTemplate) return;
+    const extracted = extractPluginInputsFromPrompt(
+      active.queryTemplate,
+      nextPrompt,
+      active.inputFields,
+    );
+    if (!extracted) return;
+    const nextInputs = { ...active.inputs, ...extracted };
+    const inputsValid = pluginInputsAreValid(active.inputFields, nextInputs);
+    const inputsChanged = !inputsEqual(active.inputs, nextInputs);
+    setActive({
+      ...active,
+      inputs: nextInputs,
+      inputsValid,
+      result:
+        inputsChanged && !inputsEqual(active.result?.appliedPlugin?.inputs, nextInputs)
+          ? null
+          : active.result,
+      lastRenderedPrompt: nextPrompt,
+    });
+  }
+
+  function updateActiveInputs(next: Record<string, unknown>) {
+    if (!active) return;
+    const inputsValid = pluginInputsAreValid(active.inputFields, next);
+    const nextRendered =
+      active.queryTemplate !== null
+        ? renderPluginBriefTemplate(active.queryTemplate, next)
+        : active.lastRenderedPrompt;
+    if (
+      active.queryTemplate !== null &&
+      nextRendered !== null &&
+      (prompt === active.lastRenderedPrompt || prompt.trim().length === 0)
+    ) {
+      setPrompt(nextRendered);
+    }
+    setActive({
+      ...active,
+      inputs: next,
+      inputsValid,
+      result: inputsEqual(active.result?.appliedPlugin?.inputs, next) ? active.result : null,
+      lastRenderedPrompt: nextRendered,
+    });
   }
 
   function clearActivePlugin() {
@@ -283,15 +490,19 @@ export function HomeView({
   }
 
   function queuePluginAuthoring(chipId: string | null, goal?: string) {
-    const nextPrompt = goal ? buildPluginAuthoringPrompt(goal) : PLUGIN_AUTHORING_PROMPT;
-    setActive(null);
-    setActiveSkill(null);
-    setFallbackProjectKind('other');
-    setError(null);
-    setPrompt(nextPrompt);
-    setPendingAuthoringPrompt(nextPrompt);
-    setPendingAuthoringChipId(chipId ?? 'plugin-authoring');
-    requestAnimationFrame(() => inputRef.current?.focus());
+    const nextInputs = buildPluginAuthoringInputs(goal);
+    const nextPrompt = buildPluginAuthoringPromptForInputs(nextInputs);
+    runWithReplacementConfirmation('Plugin authoring', nextPrompt, () => {
+      setActive(null);
+      setActiveSkill(null);
+      setFallbackProjectKind('other');
+      setError(null);
+      setPrompt(nextPrompt);
+      setPendingAuthoringPrompt(nextPrompt);
+      setPendingAuthoringInputs(nextInputs);
+      setPendingAuthoringChipId(chipId ?? 'create-plugin');
+      requestAnimationFrame(() => inputRef.current?.focus());
+    });
   }
 
   useEffect(() => {
@@ -309,11 +520,12 @@ export function HomeView({
     }
     void usePlugin(record, pendingAuthoringPrompt, {
       projectKind: 'other',
-      chipId: pendingAuthoringChipId === 'plugin-authoring' ? undefined : pendingAuthoringChipId,
-      ...(authoringRecord ? {} : { inputs: AUTHORING_DEFAULT_SCENARIO_INPUTS }),
+      chipId: pendingAuthoringChipId,
+      inputs: authoringRecord ? pendingAuthoringInputs : AUTHORING_DEFAULT_SCENARIO_INPUTS,
+      ...(authoringRecord ? { queryTemplate: PLUGIN_AUTHORING_PROMPT_TEMPLATE } : {}),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAuthoringChipId, pendingAuthoringPrompt, pluginsLoading, plugins]);
+  }, [pendingAuthoringChipId, pendingAuthoringPrompt, pendingAuthoringInputs, pluginsLoading, plugins]);
 
   // Stage B of plugin-driven-flow-plan: the chip rail dispatcher.
   // Pure UI-state mapping — the heavy lifting (apply / import) is
@@ -333,7 +545,7 @@ export function HomeView({
           );
           return;
         }
-        void usePlugin(record, undefined, {
+        requestUsePlugin(record, undefined, {
           projectKind: chip.action.projectKind,
           chipId: chip.id,
           inputs: chip.action.inputs,
@@ -363,19 +575,41 @@ export function HomeView({
     }
   }
 
-  function submit() {
+  async function submit() {
     const trimmed = prompt.trim();
     if (!trimmed) return;
+    let submittedActive = active;
+    if (submittedActive && !submittedActive.inputsValid) {
+      setError('Fill the required plugin parameters before running.');
+      return;
+    }
+    if (submittedActive && !submittedActive.result) {
+      const result = await resolveActivePlugin(submittedActive.record, submittedActive.inputs);
+      if (!result) {
+        setError(`Failed to apply ${submittedActive.record.title}. Check the plugin parameters and try again.`);
+        return;
+      }
+      submittedActive = { ...submittedActive, result };
+      setActive(submittedActive);
+    }
+    const contextPlugins = selectedPluginContexts.map((item) => ({
+      id: item.record.id,
+      title: item.record.title,
+      ...(item.record.manifest?.description
+        ? { description: item.record.manifest.description }
+        : {}),
+    }));
     const defaultInputs = { prompt: trimmed };
     onSubmit({
       prompt: trimmed,
-      pluginId: active?.record.id ?? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
+      pluginId: submittedActive?.record.id ?? DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
       skillId: activeSkill?.id ?? null,
-      appliedPluginSnapshotId: active?.result?.appliedPlugin?.snapshotId ?? null,
-      pluginTitle: active?.record.title ?? null,
-      taskKind: active?.result?.appliedPlugin?.taskKind ?? null,
-      pluginInputs: active ? active.inputs : defaultInputs,
-      projectKind: active?.projectKind ?? fallbackProjectKind ?? projectKindForSkill(activeSkill) ?? 'other',
+      appliedPluginSnapshotId: submittedActive?.result?.appliedPlugin?.snapshotId ?? null,
+      pluginTitle: submittedActive?.record.title ?? null,
+      taskKind: submittedActive?.result?.appliedPlugin?.taskKind ?? null,
+      pluginInputs: submittedActive ? submittedActive.inputs : defaultInputs,
+      projectKind: submittedActive?.projectKind ?? fallbackProjectKind ?? projectKindForSkill(activeSkill) ?? 'other',
+      contextPlugins,
     });
   }
 
@@ -384,14 +618,27 @@ export function HomeView({
       <HomeHero
         ref={inputRef}
         prompt={prompt}
-        onPromptChange={setPrompt}
+        onPromptChange={handlePromptChange}
         onSubmit={submit}
         activePluginTitle={activeBadgeTitle}
+        activePluginRecord={active?.record ?? null}
         activeSkillId={activeSkill?.id ?? null}
         activeSkillTitle={activeSkill?.name ?? null}
         activeChipId={active?.chipId ?? null}
         onClearActivePlugin={clearActivePlugin}
         onClearActiveSkill={() => setActiveSkill(null)}
+        selectedPluginContexts={selectedPluginContexts.map((item) => item.record)}
+        onRemovePluginContext={removePluginContext}
+        onOpenPluginDetails={setDetailsRecord}
+        pluginInputFields={active?.inputFields ?? []}
+        pluginInputValues={active?.inputs ?? {}}
+        pluginInputTemplate={active?.queryTemplate ?? null}
+        onPluginInputValuesChange={updateActiveInputs}
+        onPluginInputValidityChange={(valid) => {
+          setActive((prev) => (
+            prev && prev.inputsValid !== valid ? { ...prev, inputsValid: valid } : prev
+          ));
+        }}
         pluginOptions={plugins}
         pluginsLoading={pluginsLoading}
         skillOptions={selectableSkills}
@@ -400,8 +647,12 @@ export function HomeView({
         mcpLoading={mcpLoading}
         pendingPluginId={pendingApplyId}
         pendingChipId={pendingChipId}
-        submitDisabled={Boolean(pendingApplyId) || Boolean(pendingAuthoringChipId)}
-        onPickPlugin={(record, nextPrompt) => void usePlugin(record, nextPrompt)}
+        submitDisabled={
+          Boolean(pendingApplyId) ||
+          Boolean(pendingAuthoringChipId) ||
+          Boolean(active && !active.inputsValid)
+        }
+        onPickPlugin={(record, nextPrompt) => addPluginContext(record, nextPrompt)}
         onPickSkill={useSkill}
         onPickMcp={useMcpServer}
         onPickChip={pickChip}
@@ -421,18 +672,54 @@ export function HomeView({
         loading={pluginsLoading}
         activePluginId={active?.record.id ?? null}
         pendingApplyId={pendingApplyId}
-        onUse={(record) => void usePlugin(record)}
+        onUse={(record) => requestUsePlugin(record)}
         onOpenDetails={setDetailsRecord}
         onCreatePlugin={(goal) => queuePluginAuthoring(null, goal)}
+        onBrowseRegistry={onBrowseRegistry}
       />
 
       {detailsRecord ? (
         <PluginDetailsModal
           record={detailsRecord}
           onClose={() => setDetailsRecord(null)}
-          onUse={(record) => void usePlugin(record)}
+          onUse={(record) => requestUsePlugin(record)}
           isApplying={pendingApplyId === detailsRecord.id}
         />
+      ) : null}
+      {pendingReplacement ? (
+        <div className="home-hero-confirm__backdrop" role="presentation">
+          <div
+            className="home-hero-confirm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="home-hero-confirm-title"
+          >
+            <h2 id="home-hero-confirm-title">Replace current prompt?</h2>
+            <p>
+              Using {pendingReplacement.title} will replace the text currently in the input.
+            </p>
+            <div className="home-hero-confirm__actions">
+              <button
+                type="button"
+                className="home-hero-confirm__secondary"
+                onClick={() => setPendingReplacement(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="home-hero-confirm__primary"
+                onClick={() => {
+                  const action = pendingReplacement.confirm;
+                  setPendingReplacement(null);
+                  action();
+                }}
+              >
+                Replace
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -447,4 +734,107 @@ function projectKindForSkill(skill: SkillSummary | null): ProjectKind | null {
   if (skill.mode === 'video' || skill.surface === 'video') return 'video';
   if (skill.mode === 'audio' || skill.surface === 'audio') return 'audio';
   return 'other';
+}
+
+function hydratePluginInputs(
+  fields: InputFieldSpec[],
+  provided: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...(provided ?? {}) };
+  for (const field of fields) {
+    if (next[field.name] === undefined && field.default !== undefined) {
+      next[field.name] = field.default;
+    }
+  }
+  return next;
+}
+
+function pluginInputsAreValid(
+  fields: InputFieldSpec[],
+  values: Record<string, unknown>,
+): boolean {
+  return fields.every((field) => {
+    if (!field.required) return true;
+    const value = values[field.name];
+    return value !== undefined && value !== null && value !== '';
+  });
+}
+
+const TEMPLATE_INPUT_PATTERN = /\{\{\s*([a-zA-Z_][\w-]*)\s*\}\}/g;
+
+function extractPluginInputsFromPrompt(
+  template: string,
+  prompt: string,
+  fields: InputFieldSpec[],
+): Record<string, unknown> | null {
+  TEMPLATE_INPUT_PATTERN.lastIndex = 0;
+  const fieldByName = new Map(fields.map((field) => [field.name, field]));
+  const keys: string[] = [];
+  let pattern = '^';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TEMPLATE_INPUT_PATTERN.exec(template)) !== null) {
+    const placeholder = match[0];
+    const key = match[1];
+    if (!key) continue;
+    pattern += escapeRegExp(template.slice(lastIndex, match.index));
+    pattern += '([\\s\\S]*?)';
+    keys.push(key);
+    lastIndex = match.index + placeholder.length;
+  }
+  if (keys.length === 0) return null;
+  pattern += escapeRegExp(template.slice(lastIndex));
+  const renderedMatch = new RegExp(pattern + '$').exec(prompt);
+  if (!renderedMatch) return null;
+  const next: Record<string, unknown> = {};
+  keys.forEach((key, index) => {
+    const field = fieldByName.get(key);
+    if (!field) return;
+    const raw = renderedMatch[index + 1] ?? '';
+    next[key] = coercePromptInputValue(raw, field);
+  });
+  return next;
+}
+
+function coercePromptInputValue(raw: string, field: InputFieldSpec): unknown {
+  const rawType = (field as { type?: unknown }).type;
+  const type = typeof rawType === 'string' ? rawType : 'string';
+  const trimmed = raw.trim();
+  if (type === 'number') {
+    if (trimmed.length === 0) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : raw;
+  }
+  if (type === 'boolean') {
+    if (trimmed.toLowerCase() === 'true') return true;
+    if (trimmed.toLowerCase() === 'false') return false;
+  }
+  if (type === 'select' && Array.isArray(field.options) && field.options.includes(trimmed)) {
+    return trimmed;
+  }
+  return raw;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function removePluginMentionFromPrompt(prompt: string, record: InstalledPluginRecord): string {
+  const token = `@${record.title}`;
+  return prompt
+    .replace(new RegExp(`(^|\\s)${escapeRegExp(token)}(?=\\s|$)`, 'g'), ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .trim();
+}
+
+function inputsEqual(
+  left: Record<string, unknown> | undefined,
+  right: Record<string, unknown>,
+): boolean {
+  if (!left) return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key, idx) => key === rightKeys[idx] && left[key] === right[key]);
 }

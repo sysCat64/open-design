@@ -44,6 +44,9 @@ importers:
       '@open-design/plugin-runtime':
         specifier: workspace:*
         version: link:../../packages/plugin-runtime
+      '@open-design/registry-protocol':
+        specifier: workspace:*
+        version: link:../../packages/registry-protocol
       '@open-design/sidecar':
         specifier: workspace:*
         version: link:../../packages/sidecar
@@ -373,6 +376,22 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.39)(jsdom@29.1.1)(lightningcss@1.32.0)
+
+  packages/registry-protocol:
+    dependencies:
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      esbuild:
+        specifier: 0.27.7
+        version: 0.27.7
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@24.12.2)(jsdom@29.1.1)(lightningcss@1.32.0)
 
   packages/sidecar:
     devDependencies:

@@ -183,14 +183,15 @@ describe('PluginsView', () => {
     fireEvent.click(await screen.findByTestId('plugins-create-button'));
 
     expect(onCreatePlugin).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('dialog', { name: 'Create or import a plugin' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Import a plugin' })).toBeNull();
   });
 
   it('shows installed plugins and available registry entries', async () => {
     render(<PluginsView />);
 
-    await waitFor(() => expect(screen.getAllByText('Official Plugin').length).toBeGreaterThan(0));
+    expect(await screen.findByText('Installed plugins')).toBeTruthy();
     expect(screen.getAllByText('User Plugin').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Official Plugin')).toBeNull();
 
     const availableTab = screen.getByTestId('plugins-tab-available');
     const sourcesTab = screen.getByTestId('plugins-tab-sources');
@@ -202,20 +203,58 @@ describe('PluginsView', () => {
     expect(screen.getByText('Example Catalog')).toBeTruthy();
   });
 
+  it('shows all installed plugins by default on the Plugins page', async () => {
+    const createPlugin = makePlugin('create-plugin', 'github', 'restricted', 'Create Plugin');
+    const importPlugin = makePlugin('import-plugin', 'github', 'restricted', 'Import Plugin');
+    importPlugin.manifest.od = {
+      kind: 'scenario',
+      mode: 'scenario',
+      taskKind: 'figma-migration',
+    };
+    mockedListPlugins.mockResolvedValue([createPlugin, importPlugin]);
+    mockedListMarketplaces.mockResolvedValue([]);
+
+    render(<PluginsView />);
+
+    const list = await screen.findByRole('list');
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((item) => item.getAttribute('data-plugin-id'))
+        .sort(),
+    ).toEqual(['create-plugin', 'import-plugin']);
+    expect(screen.getByText('2 of 2')).toBeTruthy();
+  });
+
+  it('hands installed plugin Use actions to the host shell', async () => {
+    const onUsePlugin = vi.fn();
+    render(<PluginsView onUsePlugin={onUsePlugin} />);
+
+    fireEvent.click(await screen.findByTestId('plugins-home-use-user-plugin'));
+
+    expect(onUsePlugin).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'user-plugin',
+      title: 'User Plugin',
+    }));
+    expect(mockedApplyPlugin).not.toHaveBeenCalled();
+  });
+
   it('installs from a supported source string', async () => {
     render(<PluginsView />);
 
     expect(screen.queryByTestId('plugins-tab-import')).toBeNull();
     fireEvent.click(await screen.findByTestId('plugins-import-button'));
-    expect(screen.getByRole('dialog', { name: 'Create or import a plugin' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Import a plugin' })).toBeTruthy();
+    expect(screen.queryByText('Create from template')).toBeNull();
+    const source = 'github:nexu-io/open-design@garnet-hemisphere/plugins/community/registry-starter';
     fireEvent.change(screen.getByLabelText('GitHub, archive, or marketplace source'), {
-      target: { value: 'github:owner/repo/plugins/my-plugin' },
+      target: { value: source },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
 
     await waitFor(() =>
       expect(mockedInstallPluginSource).toHaveBeenCalledWith(
-        'github:owner/repo/plugins/my-plugin',
+        source,
       ),
     );
     expect(await screen.findByText('Installed New Plugin.')).toBeTruthy();
@@ -233,20 +272,64 @@ describe('PluginsView', () => {
       expect(mockedInstallPluginSource).toHaveBeenCalledWith('remote-plugin'),
     );
     expect(await screen.findByText('Installed New Plugin.')).toBeTruthy();
+    expect(screen.getByTestId('plugins-tab-installed').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('marks bundled official registry entries as already installed in Available', async () => {
+    const official = makePlugin('official-plugin', 'bundled', 'bundled', 'Official Plugin');
+    official.sourceMarketplaceId = 'official';
+    official.sourceMarketplaceEntryName = 'open-design/official-plugin';
+    official.sourceMarketplaceEntryVersion = '1.0.0';
+    official.marketplaceTrust = 'official';
+    mockedListPlugins.mockResolvedValue([official]);
+    mockedListMarketplaces.mockResolvedValue([
+      {
+        id: 'official',
+        url: 'https://open-design.ai/marketplace/open-design-marketplace.json',
+        trust: 'official',
+        manifest: {
+          name: 'Open Design Official',
+          version: '0.1.0',
+          plugins: [{
+            name: 'open-design/official-plugin',
+            title: 'Official Plugin',
+            source: 'github:nexu-io/open-design@main/plugins/_official/scenarios/official-plugin',
+            version: '1.0.0',
+            description: 'Bundled official starter.',
+            tags: ['official'],
+          }],
+        },
+      },
+    ]);
+
+    render(<PluginsView />);
+
+    fireEvent.click(await screen.findByTestId('plugins-tab-available'));
+    const card = (await screen.findByText('Official Plugin')).closest('article');
+    expect(card).not.toBeNull();
+    expect(within(card!).getByText('Open Design Official')).toBeTruthy();
+    expect(within(card!).queryByRole('button', { name: 'Install' })).toBeNull();
+    expect(within(card!).queryByRole('button', { name: 'Use' })).toBeNull();
+    expect(
+      within(card!).getByRole('button', { name: 'Installed' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(mockedApplyPlugin).not.toHaveBeenCalled();
   });
 
   it('manages registry sources from the Sources tab', async () => {
     render(<PluginsView />);
 
+    const sourceUrl =
+      'https://raw.githubusercontent.com/nexu-io/open-design/garnet-hemisphere/plugins/registry/community/open-design-marketplace.json';
     fireEvent.click(await screen.findByTestId('plugins-tab-sources'));
     fireEvent.change(screen.getByLabelText('Source URL'), {
-      target: { value: 'https://example.com/next.json' },
+      target: { value: sourceUrl },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Add source' }));
 
     await waitFor(() =>
       expect(mockedAddMarketplace).toHaveBeenCalledWith({
-        url: 'https://example.com/next.json',
+        url: sourceUrl,
         trust: 'restricted',
       }),
     );

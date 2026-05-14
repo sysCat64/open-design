@@ -11,6 +11,7 @@
 //   - awesome-agent-skills   → VoltAgent/awesome-agent-skills
 //   - clawhub                → openclaw/clawhub
 //   - skills-sh              → skills.sh discovery hint
+//   - open-design            → open-design/plugin-registry
 //
 // The function is pure: it accepts the plugin's metadata and returns
 // the catalog target description. The CLI is the side-effect-bearing
@@ -20,7 +21,8 @@ export type PublishCatalog =
   | 'anthropics-skills'
   | 'awesome-agent-skills'
   | 'clawhub'
-  | 'skills-sh';
+  | 'skills-sh'
+  | 'open-design';
 
 export interface PublishMetadata {
   // Plugin name + version come from the manifest. The repo URL is the
@@ -45,6 +47,37 @@ export interface PublishLink {
   prBody: string;
 }
 
+export interface MarketplaceJsonManifest {
+  specVersion: string;
+  name: string;
+  version: string;
+  generatedAt?: string;
+  plugins: MarketplaceJsonEntry[];
+  [key: string]: unknown;
+}
+
+export interface MarketplaceJsonEntry {
+  name: string;
+  source: string;
+  version: string;
+  title?: string;
+  description?: string;
+  publisher?: {
+    name?: string;
+    github?: string;
+    url?: string;
+  };
+  homepage?: string;
+  repo?: string;
+  [key: string]: unknown;
+}
+
+export interface MarketplaceJsonPublishOutcome {
+  manifest: MarketplaceJsonManifest;
+  entry: MarketplaceJsonEntry;
+  inserted: boolean;
+}
+
 export class PublishError extends Error {
   constructor(message: string) {
     super(message);
@@ -57,6 +90,7 @@ const KNOWN_TARGETS = new Set<PublishCatalog>([
   'awesome-agent-skills',
   'clawhub',
   'skills-sh',
+  'open-design',
 ]);
 
 export function buildPublishLink(args: {
@@ -103,9 +137,86 @@ export function buildPublishLink(args: {
         ].join('\n'),
       };
     }
+    case 'open-design': {
+      const bodyWithRegistry = [
+        body,
+        '',
+        '## Open Design registry entry',
+        '',
+        '- Target path: `community/<vendor>/<plugin-name>/open-design.json`',
+        '- Generated index: `open-design-marketplace.json`',
+        '- Required checks: `od plugin validate`, `od plugin pack`, integrity digest, preview smoke.',
+      ].join('\n');
+      const url = newIssueUrl('open-design/plugin-registry', title, bodyWithRegistry);
+      return {
+        catalog: args.catalog,
+        catalogLabel: 'open-design/plugin-registry',
+        url,
+        prBody: bodyWithRegistry,
+      };
+    }
   }
   // Unreachable; keeps the compiler happy.
   throw new PublishError(`unhandled catalog: ${String(args.catalog)}`);
+}
+
+export function buildMarketplaceJsonEntry(meta: PublishMetadata): MarketplaceJsonEntry {
+  if (!meta.pluginId.includes('/')) {
+    throw new PublishError('marketplace-json publish requires a stable namespaced id: vendor/plugin-name');
+  }
+  if (!meta.repoUrl) {
+    throw new PublishError('marketplace-json publish requires meta.repoUrl');
+  }
+  const parsedRepo = parseGithubRepo(meta.repoUrl);
+  const entry: MarketplaceJsonEntry = {
+    name: meta.pluginId,
+    source: parsedRepo.source,
+    version: meta.pluginVersion,
+    repo: meta.repoUrl,
+    homepage: meta.repoUrl,
+    publisher: {
+      name: parsedRepo.owner,
+      github: parsedRepo.owner,
+      url: `https://github.com/${parsedRepo.owner}`,
+    },
+  };
+  if (meta.pluginTitle) entry.title = meta.pluginTitle;
+  if (meta.pluginDescription) entry.description = meta.pluginDescription;
+  return entry;
+}
+
+export function upsertMarketplaceJsonEntry(args: {
+  manifest?: Partial<MarketplaceJsonManifest> | null;
+  meta: PublishMetadata;
+  generatedAt?: string;
+}): MarketplaceJsonPublishOutcome {
+  const entry = buildMarketplaceJsonEntry(args.meta);
+  const existing = args.manifest ?? {};
+  const plugins = Array.isArray(existing.plugins) ? existing.plugins : [];
+  let inserted = true;
+  const nextPlugins = plugins.map((plugin) => {
+    if (plugin?.name === entry.name) {
+      inserted = false;
+      return {
+        ...plugin,
+        ...entry,
+      };
+    }
+    return plugin;
+  });
+  if (inserted) {
+    nextPlugins.push(entry);
+  }
+  nextPlugins.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const manifest: MarketplaceJsonManifest = {
+    ...existing,
+    specVersion: typeof existing.specVersion === 'string' ? existing.specVersion : '1.0.0',
+    name: typeof existing.name === 'string' ? existing.name : 'open-design-marketplace',
+    version: typeof existing.version === 'string' ? existing.version : '1.0.0',
+    generatedAt: args.generatedAt ?? new Date().toISOString(),
+    plugins: nextPlugins,
+  };
+  return { manifest, entry, inserted };
 }
 
 function newIssueUrl(repo: string, title: string, body: string): string {
@@ -113,6 +224,38 @@ function newIssueUrl(repo: string, title: string, body: string): string {
   params.set('title', title);
   params.set('body', body);
   return `https://github.com/${repo}/issues/new?${params.toString()}`;
+}
+
+function parseGithubRepo(repoUrl: string): { owner: string; repo: string; source: string } {
+  let url: URL;
+  try {
+    url = new URL(repoUrl);
+  } catch {
+    throw new PublishError(`unsupported repo URL: ${repoUrl}`);
+  }
+  if (url.hostname.toLowerCase() !== 'github.com') {
+    throw new PublishError('marketplace-json publish currently requires a github.com repo URL');
+  }
+  const parts = url.pathname.split('/').filter(Boolean);
+  const owner = parts[0];
+  const repo = parts[1]?.replace(/\.git$/i, '');
+  if (!owner || !repo) {
+    throw new PublishError(`unsupported GitHub repo URL: ${repoUrl}`);
+  }
+  if (parts[2] === 'tree' && parts[3]) {
+    const ref = parts[3];
+    const subpath = parts.slice(4).join('/');
+    return {
+      owner,
+      repo,
+      source: `github:${owner}/${repo}@${ref}${subpath ? `/${subpath}` : ''}`,
+    };
+  }
+  return {
+    owner,
+    repo,
+    source: `github:${owner}/${repo}`,
+  };
 }
 
 function renderPrBody(m: PublishMetadata): string {

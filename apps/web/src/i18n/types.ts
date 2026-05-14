@@ -1234,6 +1234,8 @@ export interface Dict {
   'fileViewer.exportZip': string;
   'fileViewer.exportHtml': string;
   'fileViewer.exportMd': string;
+  'fileViewer.exportImage': string;
+  'fileViewer.exportImageFailed': string;
   'fileViewer.exportJsx': string;
   'fileViewer.exportReactHtml': string;
   'fileViewer.saveAsTemplate': string;

@@ -10,10 +10,11 @@ import {
   buildPublishLink,
   PublishError,
   PUBLISH_TARGETS,
+  upsertMarketplaceJsonEntry,
 } from '../src/plugins/publish.js';
 
 const META = {
-  pluginId:          'sample-plugin',
+  pluginId:          'open-design/sample-plugin',
   pluginVersion:     '1.0.0',
   pluginTitle:       'Sample Plugin',
   pluginDescription: 'A fixture for the publish flow.',
@@ -26,6 +27,7 @@ describe('buildPublishLink', () => {
       'anthropics-skills',
       'awesome-agent-skills',
       'clawhub',
+      'open-design',
       'skills-sh',
     ].sort());
   });
@@ -57,6 +59,13 @@ describe('buildPublishLink', () => {
     expect(link.prBody).toContain('npx skills add open-design/sample-plugin');
   });
 
+  it('builds an Open Design registry submission URL', () => {
+    const link = buildPublishLink({ catalog: 'open-design', meta: META });
+    expect(link.catalogLabel).toBe('open-design/plugin-registry');
+    expect(link.url).toMatch(/^https:\/\/github\.com\/open-design\/plugin-registry\/issues\/new\?/);
+    expect(link.prBody).toContain('open-design-marketplace.json');
+  });
+
   it('falls back to owner/repo placeholder when repoUrl is missing for skills-sh', () => {
     const link = buildPublishLink({
       catalog: 'skills-sh',
@@ -67,5 +76,78 @@ describe('buildPublishLink', () => {
 
   it('rejects unknown catalogs', () => {
     expect(() => buildPublishLink({ catalog: 'mystery' as never, meta: META })).toThrow(PublishError);
+  });
+});
+
+describe('upsertMarketplaceJsonEntry', () => {
+  it('adds a namespaced plugin entry with a reproducible github source', () => {
+    const outcome = upsertMarketplaceJsonEntry({
+      generatedAt: '2026-05-14T00:00:00.000Z',
+      manifest: {
+        specVersion: '1.0.0',
+        name: 'community',
+        version: '0.1.0',
+        plugins: [],
+      },
+      meta: META,
+    });
+
+    expect(outcome.inserted).toBe(true);
+    expect(outcome.entry).toMatchObject({
+      name: 'open-design/sample-plugin',
+      source: 'github:open-design/sample-plugin',
+      version: '1.0.0',
+      title: 'Sample Plugin',
+      publisher: {
+        github: 'open-design',
+      },
+    });
+    expect(outcome.manifest.plugins).toHaveLength(1);
+    expect(outcome.manifest.generatedAt).toBe('2026-05-14T00:00:00.000Z');
+  });
+
+  it('updates existing entries and preserves unrelated catalog metadata', () => {
+    const outcome = upsertMarketplaceJsonEntry({
+      generatedAt: '2026-05-14T00:00:00.000Z',
+      manifest: {
+        specVersion: '1.0.0',
+        name: 'community',
+        version: '0.1.0',
+        extra: true,
+        plugins: [
+          {
+            name: 'open-design/sample-plugin',
+            source: 'github:open-design/sample-plugin@old',
+            version: '0.9.0',
+            tags: ['kept'],
+          },
+        ],
+      },
+      meta: {
+        ...META,
+        pluginVersion: '1.1.0',
+        repoUrl: 'https://github.com/open-design/sample-plugin/tree/main/plugins/sample',
+      },
+    });
+
+    expect(outcome.inserted).toBe(false);
+    expect(outcome.manifest.extra).toBe(true);
+    expect(outcome.manifest.plugins[0]).toMatchObject({
+      name: 'open-design/sample-plugin',
+      source: 'github:open-design/sample-plugin@main/plugins/sample',
+      version: '1.1.0',
+      tags: ['kept'],
+    });
+  });
+
+  it('rejects flat ids for public marketplace JSON', () => {
+    expect(() => upsertMarketplaceJsonEntry({
+      manifest: { plugins: [] },
+      meta: {
+        pluginId: 'sample-plugin',
+        pluginVersion: '1.0.0',
+        repoUrl: 'https://github.com/open-design/sample-plugin',
+      },
+    })).toThrow(PublishError);
   });
 });

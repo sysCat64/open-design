@@ -41,6 +41,12 @@ export interface CreateSnapshotInput {
   pluginDescription?: string | undefined;
   manifestSourceDigest: string;
   sourceMarketplaceId?: string | null | undefined;
+  sourceMarketplaceEntryName?: string | null | undefined;
+  sourceMarketplaceEntryVersion?: string | null | undefined;
+  marketplaceTrust?: 'official' | 'trusted' | 'restricted' | null | undefined;
+  resolvedSource?: string | null | undefined;
+  resolvedRef?: string | null | undefined;
+  archiveIntegrity?: string | null | undefined;
   pinnedRef?: string | null | undefined;
   taskKind: AppliedPluginSnapshot['taskKind'];
   inputs: Record<string, string | number | boolean>;
@@ -72,14 +78,16 @@ export function createSnapshot(db: SqliteDb, input: CreateSnapshotInput): Applie
   db.prepare(`
     INSERT INTO applied_plugin_snapshots (
       id, project_id, conversation_id, run_id, plugin_id, plugin_spec_version, plugin_version,
-      manifest_source_digest, source_marketplace_id, pinned_ref, task_kind,
+      manifest_source_digest, source_marketplace_id, source_marketplace_entry_name,
+      source_marketplace_entry_version, marketplace_trust, resolved_source,
+      resolved_ref, archive_integrity, pinned_ref, task_kind,
       inputs_json, resolved_context_json, pipeline_json, genui_surfaces_json,
       capabilities_granted, capabilities_required, assets_staged_json,
       connectors_required_json, connectors_resolved_json, mcp_servers_json,
       plugin_title, plugin_description, query_text,
       status, applied_at, expires_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'fresh', ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'fresh', ?, ?)
   `).run(
     id,
     input.projectId,
@@ -90,6 +98,12 @@ export function createSnapshot(db: SqliteDb, input: CreateSnapshotInput): Applie
     input.pluginVersion,
     input.manifestSourceDigest,
     input.sourceMarketplaceId ?? null,
+    input.sourceMarketplaceEntryName ?? null,
+    input.sourceMarketplaceEntryVersion ?? null,
+    input.marketplaceTrust ?? null,
+    input.resolvedSource ?? null,
+    input.resolvedRef ?? null,
+    input.archiveIntegrity ?? null,
     input.pinnedRef ?? null,
     input.taskKind,
     JSON.stringify(input.inputs),
@@ -287,6 +301,12 @@ function buildSnapshot(args: {
     pluginVersion:        input.pluginVersion,
     manifestSourceDigest: input.manifestSourceDigest,
     sourceMarketplaceId:  input.sourceMarketplaceId ?? undefined,
+    sourceMarketplaceEntryName: input.sourceMarketplaceEntryName ?? undefined,
+    sourceMarketplaceEntryVersion: input.sourceMarketplaceEntryVersion ?? undefined,
+    marketplaceTrust:     input.marketplaceTrust ?? undefined,
+    resolvedSource:       input.resolvedSource ?? undefined,
+    resolvedRef:          input.resolvedRef ?? undefined,
+    archiveIntegrity:     input.archiveIntegrity ?? undefined,
     pinnedRef:            input.pinnedRef ?? undefined,
     inputs:               input.inputs,
     resolvedContext:      input.resolvedContext,
@@ -317,6 +337,12 @@ export function rowToSnapshot(row: DbRow): AppliedPluginSnapshot {
     pluginVersion:        String(row['plugin_version']),
     manifestSourceDigest: String(row['manifest_source_digest']),
     sourceMarketplaceId:  row['source_marketplace_id'] != null ? String(row['source_marketplace_id']) : undefined,
+    sourceMarketplaceEntryName: row['source_marketplace_entry_name'] != null ? String(row['source_marketplace_entry_name']) : undefined,
+    sourceMarketplaceEntryVersion: row['source_marketplace_entry_version'] != null ? String(row['source_marketplace_entry_version']) : undefined,
+    marketplaceTrust:     row['marketplace_trust'] != null ? row['marketplace_trust'] as AppliedPluginSnapshot['marketplaceTrust'] : undefined,
+    resolvedSource:       row['resolved_source'] != null ? String(row['resolved_source']) : undefined,
+    resolvedRef:          row['resolved_ref'] != null ? String(row['resolved_ref']) : undefined,
+    archiveIntegrity:     row['archive_integrity'] != null ? String(row['archive_integrity']) : undefined,
     pinnedRef:            row['pinned_ref'] != null ? String(row['pinned_ref']) : undefined,
     inputs:               parseJsonOr<Record<string, string | number | boolean>>(row['inputs_json'], {}),
     resolvedContext:      parseJsonOr<ResolvedContext>(row['resolved_context_json'], { items: [] }),

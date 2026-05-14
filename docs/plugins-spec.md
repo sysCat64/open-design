@@ -412,7 +412,7 @@ When a plugin has no `open-design.json`, but its `SKILL.md` already contains the
 | `od.preview` | `od.preview` | Only `type` and `entry` enter the v1 manifest; `reload` is kept as adapter metadata and does not enter the public contract |
 | `od.design_system.requires` | `od.context.designSystem` | `true` means use the active project design system at run time; `sections` is preserved in resolved context as a prompt-pruning hint |
 | `od.craft.requires` | `od.context.craft` | Slug array maps directly |
-| `od.inputs` | `od.inputs` | `string` → `string`, `integer` → `number`, `enum` → `select`, `values` → `options`; `min` / `max` are preserved as future metadata, and v1 UI may ignore but must not discard them |
+| `od.inputs` | `od.inputs` | `string` → `string`, `integer` → `number`, `enum` → `select`, `upload` → `file`, `values` → `options`; `min` / `max` are preserved as future metadata, and v1 UI may ignore but must not discard them |
 | `od.parameters` | adapter metadata | v1 plugin apply does not render live sliders; fields are preserved for Phase 4 and do not enter `ApplyResult.inputs` |
 | `od.outputs` | `projectMetadata` hints | Used for artifact bookkeeping and preview defaults, not surfaced as user-editable inputs |
 | `od.capabilities_required` | `od.capabilities` | Map only capabilities that can be expressed; unknown capabilities are kept in `compatWarnings[]`, and `od plugin doctor` must surface them |
@@ -476,7 +476,8 @@ GitHub install path uses `https://codeload.github.com/owner/repo/tar.gz/<ref>`, 
 The plugin system exposes two apply surfaces; both call the same daemon endpoint and receive the same `ApplyResult`. In v1, **apply is pure by default**: it reads the manifest, templates the query, and returns context chips, inputs, asset refs, and MCP specs; it does not write the project cwd, copy assets, write `.mcp.json`, or start any process. Side effects happen later in `POST /api/projects` or `POST /api/runs`, after the same trust/capability gate runs.
 
 - **Detail-page apply** (deep): user navigates to `/marketplace/:id`, reviews the preview and capability checklist, clicks "Use this plugin". The composer is hydrated and the user lands back on Home or in the project. If the user cancels before sending, the daemon has no staged files to clean up.
-- **Inline apply** (shallow, the primary product surface): the input box on Home and the input box inside an existing project (ChatComposer) both render an **inline plugins rail** directly below them. Clicking a plugin card in the rail applies the plugin **in place** — no navigation, no context loss. The brief input prefills, the chip strip above the input populates, and the plugin's `od.inputs` form blanks render between the input and the Send button. The user fills a few blanks, tweaks the brief, hits Send. This is the natural-language, fill-in-the-blank interaction that drives both project creation and per-project tasks.
+- **Inline apply** (shallow, the primary product surface): the input box on Home and the input box inside an existing project (ChatComposer) both render an **inline plugins rail** directly below them. Clicking a plugin card's explicit **Use** action applies the plugin **in place** — no navigation, no context loss. The brief input prefills, the chip strip above the input populates, and the plugin's `od.inputs` form blanks render between the input and the Send button. The user fills a few blanks, tweaks the brief, hits Send. This is the natural-language, fill-in-the-blank interaction that drives both project creation and per-project tasks. If the brief already contains user text, the UI must confirm before replacing it.
+- **@ plugin mentions** are additive context, not apply. Selecting a plugin from the `@` picker removes the mention token, adds a removable plugin context chip, and never hydrates `od.useCase.query`. Users can select multiple plugins this way and combine them with skills or MCP context; hovering a plugin result should expose plugin details/parameters so the user can decide whether to explicitly Use it.
 
 The two surfaces share the same primitives (`InlinePluginsRail`, `ContextChipStrip`, `PluginInputsForm`) and the same `applyPlugin()` state helper. The only difference is the terminal endpoint: Home calls `POST /api/projects` to create a new project; ChatComposer calls `POST /api/runs` to create a new task in the active project.
 
@@ -628,11 +629,12 @@ Only the daemon writes `AppliedPluginSnapshot`; CLI/UI clients are read-only. Pl
 
 ### 8.3 Inline `od.inputs` form
 
-When the applied plugin declares `od.inputs`, the composer renders a `PluginInputsForm` between the brief textarea and the Send button. Behavior:
+When the applied plugin declares `od.inputs`, the composer renders a highlighted `PluginInputsForm` inside the brief input surface. Behavior:
 
 - Required fields gate Send (the button is disabled with a tooltip listing missing fields).
+- Plugins with required inputs may be selected before all answers are present. The client should render the form from manifest-declared `od.inputs`, then apply/pin the snapshot once required values are available.
 - As the user types, `{{var}}` placeholders inside `useCase.query` and inside any string-valued `context` entry re-render live, so the user sees the final brief and final chip labels before sending.
-- The form is compact by default — short fields render inline like a search bar; long-text fields collapse to a "Add details" expander.
+- The form is compact by default — short fields render inline like fill-in-the-blank slots; `select`, `boolean`, and `file` fields use native controls, and long text fields expand within the same input surface.
 - On Send, input values are sent alongside the run request; the daemon also passes them into the prompt under a small `## Plugin inputs` block so the agent has the literal user-supplied values, not just the post-template brief.
 - Inputs persist in component state until the user clears the chip strip — re-applying the same plugin on the same composer pre-fills last-used values.
 

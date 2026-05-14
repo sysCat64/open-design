@@ -74,4 +74,28 @@ describe('PluginInputsForm', () => {
     expect(screen.getByText('VC')).toBeTruthy();
     expect(screen.getByText('Customer')).toBeTruthy();
   });
+
+  it('renders file inputs as upload slots with serializable metadata', () => {
+    render(
+      <PluginInputsForm
+        fields={[{ name: 'reference', label: 'Reference file', type: 'file' }]}
+        values={{}}
+        onChange={onChange}
+        onValidityChange={onValidityChange}
+      />,
+    );
+    const input = screen.getByLabelText(/Reference file/) as HTMLInputElement;
+    const file = new File(['brief'], 'brief.txt', { type: 'text/plain' });
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(onChange).toHaveBeenCalledWith({
+      reference: expect.objectContaining({
+        name: 'brief.txt',
+        size: 5,
+        type: 'text/plain',
+      }),
+    });
+    expect(screen.getByText('brief.txt')).toBeTruthy();
+  });
 });

@@ -743,6 +743,44 @@ export interface PluginMarketplaceEntry {
   source: string;
   version?: string;
   ref?: string;
+  dist?: {
+    type?: string;
+    archive?: string;
+    integrity?: string;
+    manifestDigest?: string;
+  };
+  versions?: Array<{
+    version: string;
+    source?: string;
+    ref?: string;
+    dist?: {
+      type?: string;
+      archive?: string;
+      integrity?: string;
+      manifestDigest?: string;
+    };
+    integrity?: string;
+    manifestDigest?: string;
+    deprecated?: boolean | string;
+    yanked?: boolean;
+    yankedAt?: string;
+    yankReason?: string;
+  }>;
+  distTags?: Record<string, string>;
+  integrity?: string;
+  manifestDigest?: string;
+  publisher?: {
+    id?: string;
+    github?: string;
+    url?: string;
+  };
+  homepage?: string;
+  license?: string;
+  capabilitiesSummary?: string[];
+  deprecated?: boolean | string;
+  yanked?: boolean;
+  yankedAt?: string;
+  yankReason?: string;
   tags?: string[];
   title?: string;
   description?: string;

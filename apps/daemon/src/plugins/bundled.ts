@@ -4,9 +4,12 @@
 // folders that look like installable plugin manifests (a SKILL.md
 // + open-design.json pair) and register every match into the
 // `installed_plugins` table under `source_kind='bundled'` /
-// `trust='bundled'`. Bundled plugins never enter the user's home
-// install root; their fs_path stays inside the repo so a daemon
-// upgrade rotates them in lockstep with the daemon code.
+// `trust='bundled'`. Bundled plugins are the preinstalled cache of the
+// official registry source: they can carry marketplace provenance while
+// their bytes stay inside the runtime image for offline first-run use.
+// They never enter the user's home install root; their fs_path stays
+// inside the repo so a daemon upgrade rotates them in lockstep with the
+// daemon code.
 //
 // `od plugin uninstall` of a bundled plugin is rejected by the
 // installer (a future patch); for now, removing the row leaves the
@@ -25,7 +28,7 @@ import {
   upsertInstalledPlugin,
   type RegistryRoots,
 } from './registry.js';
-import type { InstalledPluginRecord } from '@open-design/contracts';
+import type { InstalledPluginRecord, MarketplaceTrust } from '@open-design/contracts';
 
 type SqliteDb = Database.Database;
 
@@ -38,6 +41,11 @@ export interface RegisterBundledPluginsInput {
   // Optional registry roots override; bundled plugins do not write to
   // userPluginsRoot but the installer code path expects one anyway.
   roots?: RegistryRoots;
+  marketplaceProvenance?: {
+    sourceMarketplaceId: string;
+    marketplaceTrust: MarketplaceTrust;
+    entryNamePrefix: string;
+  };
 }
 
 export interface RegisterBundledPluginsResult {
@@ -124,8 +132,24 @@ async function registerOne(args: {
     args.warnings.push(`bundled plugin ${args.folderId} failed to parse: ${probe.errors.join('; ')}`);
     return;
   }
-  upsertInstalledPlugin(args.input.db, probe.record);
-  args.out.push(probe.record);
+  const record = withMarketplaceProvenance(probe.record, args.input.marketplaceProvenance);
+  upsertInstalledPlugin(args.input.db, record);
+  args.out.push(record);
+}
+
+function withMarketplaceProvenance(
+  record: InstalledPluginRecord,
+  provenance: RegisterBundledPluginsInput['marketplaceProvenance'],
+): InstalledPluginRecord {
+  if (!provenance) return record;
+  return {
+    ...record,
+    sourceMarketplaceId:           provenance.sourceMarketplaceId,
+    sourceMarketplaceEntryName:    `${provenance.entryNamePrefix}/${record.id}`,
+    sourceMarketplaceEntryVersion: record.version,
+    marketplaceTrust:              provenance.marketplaceTrust,
+    resolvedSource:                record.source,
+  };
 }
 
 async function pathExists(p: string): Promise<boolean> {

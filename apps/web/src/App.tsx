@@ -1130,6 +1130,7 @@ export function App() {
           key={activeProject.id}
           project={activeProject}
           routeFileName={route.kind === 'project' ? route.fileName : null}
+          routeConversationId={route.kind === 'project' ? route.conversationId : null}
           config={config}
           agents={agents}
           skills={enabledFunctionalSkills}

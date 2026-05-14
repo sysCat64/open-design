@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   defaultScenarioPluginIdForKind,
   type ConnectorDetail,
+  type InstalledPluginRecord,
 } from '@open-design/contracts';
 import { LOCALE_LABEL, LOCALES, useI18n, useT, type Locale } from '../i18n';
 import { navigate, useRoute } from '../router';
@@ -38,8 +39,8 @@ import { GithubStarBadge } from './GithubStarBadge';
 import { formatStars, GITHUB_REPO_URL, useGithubStars } from './useGithubStars';
 import { HomeView } from './HomeView';
 import {
-  buildPluginAuthoringPrompt,
   createPluginAuthoringHandoff,
+  createPluginUseHandoff,
   type HomePromptHandoff,
 } from './home-hero/plugin-authoring';
 import { Icon } from './Icon';
@@ -271,11 +272,13 @@ export function EntryShell({
 
   function startPluginAuthoring(goal?: string) {
     setHomePromptHandoff(
-      createPluginAuthoringHandoff(
-        Date.now(),
-        goal ? buildPluginAuthoringPrompt(goal) : undefined,
-      ),
+      createPluginAuthoringHandoff(Date.now(), goal),
     );
+    changeView('home');
+  }
+
+  function usePluginFromLibrary(record: InstalledPluginRecord) {
+    setHomePromptHandoff(createPluginUseHandoff(Date.now(), record.id));
     changeView('home');
   }
 
@@ -331,6 +334,9 @@ export function EntryShell({
         : fallbackName;
     const metadata: ProjectMetadata = {
       kind: payload.projectKind ?? 'prototype',
+      ...(payload.contextPlugins && payload.contextPlugins.length > 0
+        ? { contextPlugins: payload.contextPlugins }
+        : {}),
     };
     onCreateProject({
       name,
@@ -661,6 +667,7 @@ export function EntryShell({
                 onSubmit={handlePluginLoopSubmit}
                 onOpenProject={onOpenProject}
                 onViewAllProjects={() => changeView('projects')}
+                onBrowseRegistry={() => changeView('plugins')}
                 onImportFolder={handleChipFolderImport}
                 onOpenNewProject={(tab) => {
                   // Stage B of plugin-driven-flow-plan: the rail's
@@ -704,6 +711,7 @@ export function EntryShell({
             {view === 'plugins' ? (
               <PluginsView
                 onCreatePlugin={startPluginAuthoring}
+                onUsePlugin={usePluginFromLibrary}
                 onCreatePluginShareProject={onCreatePluginShareProject}
               />
             ) : null}

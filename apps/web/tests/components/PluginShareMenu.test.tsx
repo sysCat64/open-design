@@ -20,6 +20,7 @@ interface MakeArgs {
   source?: string;
   sourceKind?: InstalledPluginRecord['sourceKind'];
   marketplaceId?: string;
+  marketplaceEntryName?: string;
   authorUrl?: string;
   homepage?: string;
 }
@@ -32,6 +33,7 @@ function make(args: MakeArgs): InstalledPluginRecord {
     sourceKind: args.sourceKind ?? 'bundled',
     source: args.source ?? `plugins/${args.id}`,
     sourceMarketplaceId: args.marketplaceId,
+    sourceMarketplaceEntryName: args.marketplaceEntryName,
     trust: 'bundled',
     capabilitiesGranted: [],
     manifest: {
@@ -107,19 +109,20 @@ describe('PluginShareMenu', () => {
     });
   }
 
-  it('copies an install command for marketplace plugins using the marketplace id', async () => {
+  it('copies an install command for marketplace plugins using the registry entry name', async () => {
     renderMenu(
       make({
         id: 'mp-plugin',
-        sourceKind: 'marketplace',
-        source: 'https://registry.example/plugins/mp-plugin',
-        marketplaceId: '@official/mp-plugin',
+        sourceKind: 'github',
+        source: 'github:open-design/plugins/mp-plugin',
+        marketplaceId: 'official',
+        marketplaceEntryName: 'open-design/mp-plugin',
       }),
     );
     openPopover();
     clickItem('Copy install command');
     await Promise.resolve();
-    expect(writes).toContain('od plugin install @official/mp-plugin');
+    expect(writes).toContain('od plugin install open-design/mp-plugin');
   });
 
   it('copies the github source string for github-installed plugins', async () => {

@@ -80,6 +80,24 @@ const sample: InstalledPluginRecord[] = [
 ];
 
 describe('PluginsHomeSection (category bar)', () => {
+  it('frames the home shelf as official starters and can jump to registry', () => {
+    const onBrowseRegistry = vi.fn();
+    render(
+      <PluginsHomeSection
+        plugins={sample}
+        loading={false}
+        activePluginId={null}
+        pendingApplyId={null}
+        onUse={() => {}}
+        onOpenDetails={() => {}}
+        onBrowseRegistry={onBrowseRegistry}
+      />,
+    );
+    expect(screen.getByText('Official starters')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('plugins-home-browse-registry'));
+    expect(onBrowseRegistry).toHaveBeenCalledTimes(1);
+  });
+
   it('renders a single category row with All + curated buckets', () => {
     render(
       <PluginsHomeSection

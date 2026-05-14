@@ -43,7 +43,11 @@ import { installFromTarget, uninstallById, sanitizeRepoName } from './library-in
 import { buildWindowsFolderDialogCommand, parseFolderDialogStdout } from './native-folder-dialog.js';
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import { syncCommunityPets } from './community-pets-sync.js';
-import { listDesignSystems, readDesignSystem, readDesignSystemAssets } from './design-systems.js';
+import {
+  listDesignSystems,
+  readDesignSystem,
+  resolveDesignSystemAssets,
+} from './design-systems.js';
 import {
   applyDiffReviewDecisionToCwd,
   applyPlugin,
@@ -60,6 +64,7 @@ import {
   MissingInputError,
   pluginPromptBlock,
   pruneExpiredSnapshots,
+  readPluginLockfile,
   registerBuiltInAtomWorkers,
   registerBundledPlugins,
   registryRootsForDataDir,
@@ -108,6 +113,8 @@ import { createRunRegistry } from './critique/run-registry.js';
 import { handleCritiqueInterrupt } from './critique/interrupt-handler.js';
 import { handleCritiqueArtifact } from './critique/artifact-handler.js';
 import { getCritiqueMetrics, register } from './metrics/index.js';
+import { readConformanceHistory } from './critique/conformance-history.js';
+import { evaluateRollout } from './critique/ratchet.js';
 import {
   isCritiqueEnabled,
   parseEnvEnabled,
@@ -1028,6 +1035,60 @@ const BUNDLED_PLUGINS_DIR = resolveDaemonResourceDir(
   path.join('plugins', '_official'),
   defaultBundledRoot(PROJECT_ROOT),
 );
+const PLUGIN_REGISTRY_DIR = resolveDaemonResourceDir(
+  DAEMON_RESOURCE_ROOT,
+  'plugins/registry',
+  path.join(PROJECT_ROOT, 'plugins', 'registry'),
+);
+const OFFICIAL_MARKETPLACE_ID = 'official';
+const OFFICIAL_MARKETPLACE_URL = 'https://open-design.ai/marketplace/open-design-marketplace.json';
+const OFFICIAL_PLUGIN_SOURCE_REPO = 'github:nexu-io/open-design@main';
+const DEFAULT_MARKETPLACE_SEED_BASE_URL = 'https://open-design.ai/marketplace';
+const DEFAULT_MARKETPLACE_SEEDS = new Map([
+  [OFFICIAL_MARKETPLACE_ID, {
+    trust: 'official',
+    url:   OFFICIAL_MARKETPLACE_URL,
+  }],
+  ['community', {
+    trust: 'restricted',
+    url:   `${DEFAULT_MARKETPLACE_SEED_BASE_URL}/community/open-design-marketplace.json`,
+  }],
+]);
+
+function bundledPluginRegistrySource(sourcePath) {
+  if (isPathWithin(BUNDLED_PLUGINS_DIR, sourcePath)) {
+    const rel = path.relative(BUNDLED_PLUGINS_DIR, sourcePath).split(path.sep).join('/');
+    return `${OFFICIAL_PLUGIN_SOURCE_REPO}/plugins/_official/${rel}`;
+  }
+  const rel = path.relative(PROJECT_ROOT, sourcePath).split(path.sep).join('/');
+  if (!rel || rel.startsWith('..')) return sourcePath;
+  return `${OFFICIAL_PLUGIN_SOURCE_REPO}/${rel}`;
+}
+
+function mergeMarketplaceEntries(manifestText, entries) {
+  try {
+    const parsed = JSON.parse(manifestText);
+    const plugins = Array.isArray(parsed.plugins) ? parsed.plugins : [];
+    const seen = new Set(plugins.map((entry) => String(entry?.name ?? '').toLowerCase()));
+    const generated = entries.filter((entry) => {
+      const key = String(entry.name ?? '').toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return JSON.stringify({
+      ...parsed,
+      metadata: {
+        ...(parsed.metadata && typeof parsed.metadata === 'object' ? parsed.metadata : {}),
+        bundledPreinstallCount: entries.length,
+      },
+      plugins: [...plugins, ...generated],
+    });
+  } catch {
+    return manifestText;
+  }
+}
+
 export function resolveDataDir(raw, projectRoot) {
   if (!raw) return path.join(projectRoot, '.od');
   // expandHomePrefix is shared with media-config.ts so OD_DATA_DIR and
@@ -1065,6 +1126,7 @@ export function resolveDataDir(raw, projectRoot) {
   return resolved;
 }
 const RUNTIME_DATA_DIR = resolveDataDir(process.env.OD_DATA_DIR, PROJECT_ROOT);
+const PLUGIN_LOCKFILE_PATH = path.join(RUNTIME_DATA_DIR, 'od-plugin-lock.json');
 // Canonical (realpath-resolved) form of RUNTIME_DATA_DIR for the few callers
 // that compare it against a user-supplied realpath() result. On macOS, /var
 // is a symlink to /private/var, so an import realpath lands in /private/var
@@ -2639,6 +2701,7 @@ export async function startServer({
     console.log('[od] Codex plugins disabled via OD_CODEX_DISABLE_PLUGINS=1');
   }
 
+  let bundledMarketplaceEntries = [];
   // Plan §3.I3 / spec §23.3.5 — register every plugin under
   // <resourceRoot>/plugins/_official/** in packaged runs, or
   // <projectRoot>/plugins/_official/** in workspace runs, as bundled plugins. The walker
@@ -2649,7 +2712,26 @@ export async function startServer({
     const result = await registerBundledPlugins({
       db,
       bundledRoot: BUNDLED_PLUGINS_DIR,
+      marketplaceProvenance: {
+        sourceMarketplaceId: OFFICIAL_MARKETPLACE_ID,
+        marketplaceTrust:    'official',
+        entryNamePrefix:     'open-design',
+      },
     });
+    bundledMarketplaceEntries = result.registered.map((plugin) => ({
+      name:        `open-design/${plugin.id}`,
+      title:       plugin.title,
+      description: plugin.description,
+      version:     plugin.version,
+      source:      bundledPluginRegistrySource(plugin.source),
+      publisher:   { id: 'open-design', url: 'https://open-design.ai' },
+      homepage:    plugin.manifest.homepage,
+      license:     plugin.manifest.license,
+      tags:        plugin.tags,
+      capabilitiesSummary: Array.isArray(plugin.manifest.od?.capabilities)
+        ? plugin.manifest.od.capabilities
+        : undefined,
+    }));
     if (result.registered.length > 0) {
       console.log(`[plugins] registered ${result.registered.length} bundled plugin(s)`);
     }
@@ -2658,6 +2740,41 @@ export async function startServer({
     }
   } catch (err) {
     console.warn(`[plugins] bundled registration failed: ${(err)?.message ?? err}`);
+  }
+
+  try {
+    const seedDirs = await fs.promises.readdir(PLUGIN_REGISTRY_DIR, { withFileTypes: true }).catch((err) => {
+      if (err?.code === 'ENOENT') return [];
+      throw err;
+    });
+    const { ensureMarketplaceManifest } = await import('./plugins/marketplaces.js');
+    for (const dirent of seedDirs) {
+      if (!dirent.isDirectory()) continue;
+      const id = dirent.name;
+      const manifestPath = path.join(PLUGIN_REGISTRY_DIR, id, 'open-design-marketplace.json');
+      if (!fs.existsSync(manifestPath)) continue;
+      let manifestText = await fs.promises.readFile(manifestPath, 'utf8');
+      if (id === OFFICIAL_MARKETPLACE_ID && bundledMarketplaceEntries.length > 0) {
+        manifestText = mergeMarketplaceEntries(manifestText, bundledMarketplaceEntries);
+      }
+      const configured = DEFAULT_MARKETPLACE_SEEDS.get(id) ?? {
+        trust: 'restricted',
+        url:   `${DEFAULT_MARKETPLACE_SEED_BASE_URL}/${id}/open-design-marketplace.json`,
+      };
+      const result = ensureMarketplaceManifest(db, {
+        id,
+        url: configured.url,
+        trust: configured.trust,
+        manifestText,
+      });
+      if (result.ok) {
+        console.log(`[plugins] seeded ${id} registry source (${result.row.manifest.plugins.length} plugin(s))`);
+      } else {
+        console.warn(`[plugins] ${id} registry seed failed: ${result.message}`);
+      }
+    }
+  } catch (err) {
+    console.warn(`[plugins] registry seed failed: ${(err)?.message ?? err}`);
   }
 
   // Plan §3.A5 / spec §16 Phase 5 / PB2: periodic snapshot GC. Disabled
@@ -2882,6 +2999,47 @@ export async function startServer({
       res.send(await getCritiqueMetrics());
     });
   }
+
+  // Phase 16 ratchet endpoint. Returns the rolling conformance window
+  // and the ratchet's current recommendation. Operator-driven by
+  // design: the recommendation does not flip OD_CRITIQUE_ROLLOUT_PHASE
+  // automatically, it surfaces so a deploy-pipeline follow-up can
+  // consume it. Tunables come from query string; defaults are the
+  // spec values (14 days, 0.90 shipped, 0.95 clean-parse).
+  // Codex + lefarcen P1 on PR #1499: clamp query inputs before the
+  // evaluator sees them so a request like `?windowDays=0` falls back to
+  // the spec default rather than producing a zero-evidence promotion.
+  // The evaluator also defends at its own entry; both are intentional
+  // (belt + suspenders) so a future caller that bypasses this route
+  // cannot reach an unguarded code path either.
+  const parsePositiveInt = (raw: unknown, fallback: number): number => {
+    if (typeof raw !== 'string' || raw.length === 0) return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+  };
+  const parseRate = (raw: unknown, fallback: number): number => {
+    if (typeof raw !== 'string' || raw.length === 0) return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+  };
+  app.get('/api/critique/conformance', async (req, res) => {
+    try {
+      const windowDays = parsePositiveInt(req.query.windowDays, 14);
+      const shippedThreshold = parseRate(req.query.shippedThreshold, 0.90);
+      const cleanParseThreshold = parseRate(req.query.cleanParseThreshold, 0.95);
+      const history = await readConformanceHistory(RUNTIME_DATA_DIR, windowDays);
+      const decision = evaluateRollout({
+        current: parseRolloutPhase(process.env.OD_CRITIQUE_ROLLOUT_PHASE),
+        history,
+        windowDays,
+        shippedThreshold,
+        cleanParseThreshold,
+      });
+      res.json({ window: { days: windowDays, history }, decision });
+    } catch (err) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', err instanceof Error ? err.message : String(err));
+    }
+  });
 
   registerConnectorRoutes(app, {
     sendApiError,
@@ -4065,8 +4223,10 @@ export async function startServer({
       const pluginRoot = await findUploadedPluginRoot(stagedFolder);
       for await (const ev of installFromLocalFolder(db, {
         source,
+        roots: PLUGIN_REGISTRY_ROOTS,
         _stagedFolder: pluginRoot,
         _stagedSourceKind: 'user',
+        lockfilePath: PLUGIN_LOCKFILE_PATH,
       })) {
         if (ev.message) log.push(ev.message);
         if (Array.isArray(ev.warnings)) warnings.splice(0, warnings.length, ...ev.warnings);
@@ -4211,6 +4371,16 @@ export async function startServer({
   app.post('/api/plugins/install', async (req, res) => {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     let source = typeof body.source === 'string' ? body.source : '';
+    let marketplaceResolution: {
+      marketplaceId: string;
+      marketplaceTrust: 'official' | 'trusted' | 'restricted';
+      pluginName: string;
+      pluginVersion: string;
+      source: string;
+      ref?: string;
+      manifestDigest?: string;
+      archiveIntegrity?: string;
+    } | null = null;
     if (!source) {
       return res.status(400).json({ error: 'source is required' });
     }
@@ -4228,7 +4398,13 @@ export async function startServer({
       // the same byte path that would happen if the user copy-pasted
       // the source manually.
       const { resolvePluginInMarketplaces } = await import('./plugins/marketplaces.js');
-      const resolved = resolvePluginInMarketplaces(db, source);
+      let lookupName = source;
+      const lockfile = await readPluginLockfile(PLUGIN_LOCKFILE_PATH);
+      const locked = lockfile.plugins[source];
+      if (locked?.version && !source.includes('@')) {
+        lookupName = `${source}@${locked.version}`;
+      }
+      const resolved = resolvePluginInMarketplaces(db, lookupName);
       if (!resolved) {
         return res.status(404).json({
           error: {
@@ -4238,6 +4414,7 @@ export async function startServer({
           },
         });
       }
+      marketplaceResolution = resolved;
       source = resolved.source;
     }
 
@@ -4251,7 +4428,19 @@ export async function startServer({
     };
 
     try {
-      for await (const ev of installPlugin(db, { source, roots: PLUGIN_REGISTRY_ROOTS })) {
+      for await (const ev of installPlugin(db, {
+        source,
+        roots: PLUGIN_REGISTRY_ROOTS,
+        sourceMarketplaceId: marketplaceResolution?.marketplaceId,
+        sourceMarketplaceEntryName: marketplaceResolution?.pluginName,
+        sourceMarketplaceEntryVersion: marketplaceResolution?.pluginVersion,
+        marketplaceTrust: marketplaceResolution?.marketplaceTrust,
+        resolvedSource: marketplaceResolution?.source,
+        resolvedRef: marketplaceResolution?.ref,
+        manifestDigest: marketplaceResolution?.manifestDigest,
+        archiveIntegrity: marketplaceResolution?.archiveIntegrity,
+        lockfilePath: PLUGIN_LOCKFILE_PATH,
+      })) {
         writeEvent(ev.kind, ev);
         if (ev.kind === 'success' || ev.kind === 'error') break;
       }
@@ -4286,6 +4475,8 @@ export async function startServer({
   // daemon's authoritative copy and confuse the next boot.
   app.post('/api/plugins/:id/upgrade', async (req, res) => {
     const id = req.params.id;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const policy = body.policy === 'pinned' ? 'pinned' : 'latest';
     const plugin = getInstalledPlugin(db, id);
     if (!plugin) {
       return res.status(404).json({
@@ -4301,7 +4492,24 @@ export async function startServer({
         },
       });
     }
-    const source = plugin.source;
+    let source = plugin.source;
+    let marketplaceResolution: {
+      marketplaceId: string;
+      marketplaceTrust: 'official' | 'trusted' | 'restricted';
+      pluginName: string;
+      pluginVersion: string;
+      source: string;
+      ref?: string;
+      manifestDigest?: string;
+      archiveIntegrity?: string;
+    } | null = null;
+    if (policy === 'latest' && plugin.sourceMarketplaceEntryName) {
+      const { resolvePluginInMarketplaces } = await import('./plugins/marketplaces.js');
+      marketplaceResolution = resolvePluginInMarketplaces(db, plugin.sourceMarketplaceEntryName);
+      if (marketplaceResolution) {
+        source = marketplaceResolution.source;
+      }
+    }
     if (!source) {
       return res.status(409).json({
         error: {
@@ -4321,10 +4529,23 @@ export async function startServer({
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
-    writeEvent('progress', { kind: 'progress', phase: 'resolving', message: `Upgrading ${id} from ${source}` });
+    writeEvent('progress', { kind: 'progress', phase: 'resolving', message: `Upgrading ${id} from ${source} (policy=${policy})` });
 
     try {
-      for await (const ev of installPlugin(db, { source, roots: PLUGIN_REGISTRY_ROOTS, eventKind: 'upgraded' })) {
+      for await (const ev of installPlugin(db, {
+        source,
+        roots: PLUGIN_REGISTRY_ROOTS,
+        eventKind: 'upgraded',
+        sourceMarketplaceId: marketplaceResolution?.marketplaceId ?? plugin.sourceMarketplaceId,
+        sourceMarketplaceEntryName: marketplaceResolution?.pluginName ?? plugin.sourceMarketplaceEntryName,
+        sourceMarketplaceEntryVersion: marketplaceResolution?.pluginVersion ?? plugin.sourceMarketplaceEntryVersion,
+        marketplaceTrust: marketplaceResolution?.marketplaceTrust ?? plugin.marketplaceTrust,
+        resolvedSource: marketplaceResolution?.source ?? plugin.resolvedSource,
+        resolvedRef: marketplaceResolution?.ref ?? plugin.resolvedRef,
+        manifestDigest: marketplaceResolution?.manifestDigest ?? plugin.manifestDigest,
+        archiveIntegrity: marketplaceResolution?.archiveIntegrity ?? plugin.archiveIntegrity,
+        lockfilePath: PLUGIN_LOCKFILE_PATH,
+      })) {
         writeEvent(ev.kind, ev);
         if (ev.kind === 'success' || ev.kind === 'error') break;
       }
@@ -7465,12 +7686,17 @@ export async function startServer({
     let designSystemBody;
     let designSystemTitle;
     // Compiled (tokens.css + components.html) form of the active brand.
-    // Gated by `OD_DESIGN_TOKEN_CHANNEL` while the experiment is in the
-    // smoke-test phase: flag-off keeps the daemon byte-equivalent to the
-    // pre-PR-C path; flag-on appends the tokens contract + reference
-    // fixture to the system prompt for any brand that ships those files
-    // (today: `default` and `kami`; every other brand falls through
-    // silently because the files are absent).
+    // Default-on as of PR-D — every chat that picks a brand with
+    // `tokens.css` + `components.html` siblings (today: `default` and
+    // `kami`; every other brand falls through silently because the
+    // files are absent) gets the structured token contract appended to
+    // the system prompt automatically.
+    //
+    // `OD_DESIGN_TOKEN_CHANNEL=0` is the kill switch: it forces the
+    // daemon back to the pre-PR-C DESIGN.md-only path for every brand,
+    // including the structured ones. Any other value (unset, `1`,
+    // `true`, etc.) keeps the new default. Drift on prose-only brands
+    // is pinned by `scripts/check-design-system-flag-parity.ts`.
     let designSystemTokensCss;
     let designSystemFixtureHtml;
     if (effectiveDesignSystemId) {
@@ -7481,23 +7707,17 @@ export async function startServer({
         (await readDesignSystem(DESIGN_SYSTEMS_DIR, effectiveDesignSystemId)) ??
         (await readDesignSystem(USER_DESIGN_SYSTEMS_DIR, effectiveDesignSystemId)) ??
         undefined;
-      if (process.env.OD_DESIGN_TOKEN_CHANNEL === '1') {
-        // Try built-in dir first, then user-installed dir, mirroring the
-        // DESIGN.md fallback chain above. Any individual file may be
-        // missing (e.g. tokens.css present, components.html absent); the
-        // composer gates each block independently.
-        const builtIn = await readDesignSystemAssets(DESIGN_SYSTEMS_DIR, effectiveDesignSystemId);
-        const installed = builtIn.tokensCss && builtIn.fixtureHtml
-          ? builtIn
-          : {
-              tokensCss: builtIn.tokensCss
-                ?? (await readDesignSystemAssets(USER_DESIGN_SYSTEMS_DIR, effectiveDesignSystemId)).tokensCss,
-              fixtureHtml: builtIn.fixtureHtml
-                ?? (await readDesignSystemAssets(USER_DESIGN_SYSTEMS_DIR, effectiveDesignSystemId)).fixtureHtml,
-            };
-        designSystemTokensCss = installed.tokensCss;
-        designSystemFixtureHtml = installed.fixtureHtml;
-      }
+      // Single seam: env gate + built-in→user-installed fallback chain
+      // live together inside `resolveDesignSystemAssets` so the whole
+      // server-side asset-resolution path can be tested end-to-end
+      // from real disk fixtures (see `tests/design-system-assets.test.ts`).
+      const assets = await resolveDesignSystemAssets(
+        effectiveDesignSystemId,
+        DESIGN_SYSTEMS_DIR,
+        USER_DESIGN_SYSTEMS_DIR,
+      );
+      designSystemTokensCss = assets.tokensCss;
+      designSystemFixtureHtml = assets.fixtureHtml;
     }
 
     const template =
@@ -9523,302 +9743,13 @@ export async function startServer({
     routines: { routineService },
   });
 
-  app.post('/api/proxy/openai/stream', async (req, res) => {
-    if (rejectPluginInProxyBody(req, res)) return;
-    /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = req.body || {};
-    const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } =
-      proxyBody;
-    if (!baseUrl || !apiKey || !model) {
-      return sendApiError(
-        res,
-        400,
-        'BAD_REQUEST',
-        'baseUrl, apiKey, and model are required',
-      );
-    }
+  // proxy routes (anthropic / openai / azure / google / ollama) live
+  // in chat-routes.ts now — garnet had a partial duplicate here that
+  // referenced helpers (rejectPluginInProxyBody, extractGeminiText, …)
+  // dropped during the reconcile merge. Deleted to fix the BYOK crash.
+  // Restore the plugin-runs-must-go-through-daemon gate by adding it
+  // to chat-routes.ts if needed.
 
-    const validated = validateExternalApiBaseUrl(baseUrl);
-    if (validated.error) {
-      return sendApiError(
-        res,
-        validated.forbidden ? 403 : 400,
-        validated.forbidden ? 'FORBIDDEN' : 'BAD_REQUEST',
-        validated.error,
-      );
-    }
-
-    const url = appendVersionedApiPath(baseUrl, '/chat/completions');
-    console.log(
-      `[proxy:openai] ${req.method} ${validated.parsed.hostname} model=${model}`,
-    );
-
-    const payloadMessages = Array.isArray(messages) ? [...messages] : [];
-    if (typeof systemPrompt === 'string' && systemPrompt) {
-      payloadMessages.unshift({ role: 'system', content: systemPrompt });
-    }
-
-    const payload = {
-      model,
-      messages: payloadMessages,
-      max_tokens:
-        typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192,
-      stream: true,
-    };
-
-    const sse = createSseResponse(res);
-    sse.send('start', { model });
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(payload),
-        redirect: 'error',
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          `[proxy:openai] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
-        );
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
-          code: proxyErrorCode(response.status),
-          details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
-        });
-        return sse.end();
-      }
-
-      let ended = false;
-      await streamUpstreamSse(response, ({ payload, data }) => {
-        if (payload === '[DONE]') {
-          sse.send('end', {});
-          ended = true;
-          return true;
-        }
-        if (!data) return false;
-        const streamError = extractStreamErrorMessage(data);
-        if (streamError) {
-          sendProxyError(sse, `Provider error: ${streamError}`, { details: data });
-          ended = true;
-          return true;
-        }
-        const delta = extractOpenAIText(data);
-        if (delta) sse.send('delta', { delta });
-        return false;
-      });
-      if (!ended) sse.send('end', {});
-      sse.end();
-    } catch (err) {
-      console.error(`[proxy:openai] internal error: ${err.message}`);
-      sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-      sse.end();
-    }
-  });
-
-  app.post('/api/proxy/azure/stream', async (req, res) => {
-    if (rejectPluginInProxyBody(req, res)) return;
-    /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = req.body || {};
-    const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens, apiVersion } =
-      proxyBody;
-    if (!baseUrl || !apiKey || !model) {
-      return sendApiError(
-        res,
-        400,
-        'BAD_REQUEST',
-        'baseUrl, apiKey, and model are required',
-      );
-    }
-
-    const validated = validateExternalApiBaseUrl(baseUrl);
-    if (validated.error) {
-      return sendApiError(
-        res,
-        validated.forbidden ? 403 : 400,
-        validated.forbidden ? 'FORBIDDEN' : 'BAD_REQUEST',
-        validated.error,
-      );
-    }
-
-    const version =
-      typeof apiVersion === 'string' && apiVersion.trim()
-        ? apiVersion.trim()
-        : '2024-10-21';
-    const url = new URL(baseUrl);
-    url.pathname = `${url.pathname.replace(/\/+$/, '')}/openai/deployments/${encodeURIComponent(model)}/chat/completions`;
-    url.searchParams.set('api-version', version);
-    console.log(
-      `[proxy:azure] ${req.method} ${validated.parsed.hostname} deployment=${model} api-version=${version}`,
-    );
-
-    const payloadMessages = Array.isArray(messages) ? [...messages] : [];
-    if (typeof systemPrompt === 'string' && systemPrompt) {
-      payloadMessages.unshift({ role: 'system', content: systemPrompt });
-    }
-
-    const payload = {
-      messages: payloadMessages,
-      max_tokens:
-        typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192,
-      stream: true,
-    };
-
-    const sse = createSseResponse(res);
-    sse.send('start', { model });
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': apiKey,
-        },
-        body: JSON.stringify(payload),
-        redirect: 'error',
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          `[proxy:azure] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
-        );
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
-          code: proxyErrorCode(response.status),
-          details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
-        });
-        return sse.end();
-      }
-
-      let ended = false;
-      await streamUpstreamSse(response, ({ payload: ssePayload, data }) => {
-        if (ssePayload === '[DONE]') {
-          sse.send('end', {});
-          ended = true;
-          return true;
-        }
-        if (!data) return false;
-        const streamError = extractStreamErrorMessage(data);
-        if (streamError) {
-          sendProxyError(sse, `Azure error: ${streamError}`, { details: data });
-          ended = true;
-          return true;
-        }
-        const delta = extractOpenAIText(data);
-        if (delta) sse.send('delta', { delta });
-        return false;
-      });
-      if (!ended) sse.send('end', {});
-      sse.end();
-    } catch (err) {
-      console.error(`[proxy:azure] internal error: ${err.message}`);
-      sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-      sse.end();
-    }
-  });
-
-  app.post('/api/proxy/google/stream', async (req, res) => {
-    if (rejectPluginInProxyBody(req, res)) return;
-    /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = req.body || {};
-    const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } = proxyBody;
-    if (!apiKey || !model) {
-      return sendApiError(
-        res,
-        400,
-        'BAD_REQUEST',
-        'apiKey and model are required',
-      );
-    }
-
-    const effectiveBaseUrl = baseUrl || 'https://generativelanguage.googleapis.com';
-    const validated = validateExternalApiBaseUrl(effectiveBaseUrl);
-    if (validated.error) {
-      return sendApiError(
-        res,
-        validated.forbidden ? 403 : 400,
-        validated.forbidden ? 'FORBIDDEN' : 'BAD_REQUEST',
-        validated.error,
-      );
-    }
-
-    const clean = effectiveBaseUrl.replace(/\/+$/, '');
-    const url = `${clean}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
-    console.log(
-      `[proxy:google] ${req.method} ${validated.parsed.hostname} model=${model}`,
-    );
-
-    const contents = (Array.isArray(messages) ? messages : []).map((message) => ({
-      role: message.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: message.content }],
-    }));
-    const payload = {
-      contents,
-      generationConfig: {
-        maxOutputTokens:
-          typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192,
-      },
-    };
-    if (typeof systemPrompt === 'string' && systemPrompt) {
-      payload.systemInstruction = { parts: [{ text: systemPrompt }] };
-    }
-
-    const sse = createSseResponse(res);
-    sse.send('start', { model });
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify(payload),
-        redirect: 'error',
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          `[proxy:google] upstream error: ${response.status} ${redactAuthTokens(errorText)}`,
-        );
-        sendProxyError(sse, `Upstream error: ${response.status}`, {
-          code: proxyErrorCode(response.status),
-          details: errorText,
-          retryable: response.status === 429 || response.status >= 500,
-        });
-        return sse.end();
-      }
-
-      let ended = false;
-      await streamUpstreamSse(response, ({ data }) => {
-        if (!data) return false;
-        const streamError = extractStreamErrorMessage(data);
-        if (streamError) {
-          sendProxyError(sse, `Gemini error: ${streamError}`, { details: data });
-          ended = true;
-          return true;
-        }
-        const delta = extractGeminiText(data);
-        if (delta) sse.send('delta', { delta });
-        const blockMessage = extractGeminiBlockMessage(data);
-        if (blockMessage) {
-          sendProxyError(sse, blockMessage, { details: data });
-          ended = true;
-          return true;
-        }
-        return false;
-      });
-      if (!ended) sse.send('end', {});
-      sse.end();
-    } catch (err) {
-      console.error(`[proxy:google] internal error: ${err.message}`);
-      sendProxyError(sse, err.message, { code: 'INTERNAL_ERROR' });
-      sse.end();
-    }
-  });
 
   registerChatRoutes(app, {
     db,

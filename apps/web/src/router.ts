@@ -19,7 +19,19 @@ export type EntryHomeView =
 
 export type Route =
   | { kind: 'home'; view: EntryHomeView }
-  | { kind: 'project'; projectId: string; fileName: string | null }
+  | {
+      kind: 'project';
+      projectId: string;
+      /**
+       * Deep-link to a specific conversation inside the project. When
+       * present, the project view picks this conversation as the active
+       * one instead of defaulting to `list[0]`. Falls back to the
+       * default picker when the routed conversation no longer exists.
+       * Added for issue #1505 (Routines history → specific conversation).
+       */
+      conversationId?: string | null;
+      fileName: string | null;
+    }
   | { kind: 'marketplace' }
   | { kind: 'marketplace-detail'; pluginId: string };
 
@@ -29,6 +41,20 @@ export function parseRoute(pathname: string): Route {
   if (parts[0] === 'projects') {
     if (parts[1]) {
       const projectId = decodeURIComponent(parts[1]);
+      // /projects/:id/conversations/:cid[/files/...]
+      if (parts[2] === 'conversations' && parts[3]) {
+        const conversationId = decodeURIComponent(parts[3]);
+        if (parts[4] === 'files' && parts[5]) {
+          return {
+            kind: 'project',
+            projectId,
+            conversationId,
+            fileName: decodeURIComponent(parts.slice(5).join('/')),
+          };
+        }
+        return { kind: 'project', projectId, conversationId, fileName: null };
+      }
+      // /projects/:id/files/...
       if (parts[2] === 'files' && parts[3]) {
         return {
           kind: 'project',
@@ -78,14 +104,16 @@ export function buildPath(route: Route): string {
   if (route.kind === 'marketplace') return '/marketplace';
   if (route.kind === 'marketplace-detail') return `/marketplace/${encodeURIComponent(route.pluginId)}`;
   const id = encodeURIComponent(route.projectId);
-  if (route.fileName) {
-    const file = route.fileName
-      .split('/')
-      .map((s) => encodeURIComponent(s))
-      .join('/');
-    return `/projects/${id}/files/${file}`;
+  const file = route.fileName
+    ? route.fileName.split('/').map((s) => encodeURIComponent(s)).join('/')
+    : null;
+  if (route.conversationId) {
+    const cid = encodeURIComponent(route.conversationId);
+    return file
+      ? `/projects/${id}/conversations/${cid}/files/${file}`
+      : `/projects/${id}/conversations/${cid}`;
   }
-  return `/projects/${id}`;
+  return file ? `/projects/${id}/files/${file}` : `/projects/${id}`;
 }
 
 // Centralized navigation. Components call this instead of mutating

@@ -60,12 +60,13 @@ function buildInstallCommand(record: InstalledPluginRecord): string {
   // The daemon's install resolver accepts the raw `record.source`
   // shape for every kind (github:owner/repo[@ref][/sub], https URL,
   // local path, marketplace id), so we mirror it verbatim. For
-  // marketplace records the marketplace id is shorter / friendlier
-  // when present.
-  if (
-    record.sourceKind === 'marketplace' &&
-    typeof record.sourceMarketplaceId === 'string'
-  ) {
+  // marketplace records should use the registry entry name when
+  // provenance preserved it; sourceMarketplaceId names the catalog,
+  // not the plugin package.
+  if (typeof record.sourceMarketplaceEntryName === 'string') {
+    return `od plugin install ${record.sourceMarketplaceEntryName}`;
+  }
+  if (record.sourceKind === 'marketplace' && typeof record.sourceMarketplaceId === 'string') {
     return `od plugin install ${record.sourceMarketplaceId}`;
   }
   return `od plugin install ${record.source}`;

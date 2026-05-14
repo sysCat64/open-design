@@ -88,6 +88,11 @@ const PLUGIN_STRING_FLAGS = new Set([
   'before',
   'trust',
   'tag',
+  'policy',
+  'version',
+  'reason',
+  'catalog',
+  'host',
 ]);
 const PLUGIN_BOOLEAN_FLAGS = new Set([
   'help',
@@ -95,6 +100,7 @@ const PLUGIN_BOOLEAN_FLAGS = new Set([
   'json',
   'revoke',
   'follow',
+  'strict',
 ]);
 
 const UI_STRING_FLAGS = new Set([
@@ -895,8 +901,11 @@ async function runPlugin(args) {
     case 'scaffold': return runPluginScaffold(rest);
     case 'validate': return runPluginValidate(rest);
     case 'pack':     return runPluginPack(rest);
+    case 'login':    return runPluginLogin(rest);
+    case 'whoami':   return runPluginWhoami(rest);
     case 'export':   return runPluginExport(rest);
     case 'publish':  return runPluginPublish(rest);
+    case 'yank':     return runPluginYank(rest);
     default:
       console.error(`unknown subcommand: od plugin ${sub}`);
       printPluginHelp();
@@ -1131,6 +1140,119 @@ Exit codes:
   }
 }
 
+async function runPluginLogin(rest) {
+  const flags = parseFlags(rest, {
+    string: new Set(['host']),
+    boolean: new Set(['help', 'h']),
+  });
+  if (flags.help || flags.h) {
+    console.log(`Usage:
+  od plugin login [--host github.com]
+
+Wraps GitHub CLI auth for Open Design registry publishing. The token stays in gh.`);
+    return;
+  }
+  const host = typeof flags.host === 'string' ? flags.host : 'github.com';
+  const version = await execFileBuffered('gh', ['--version'], { timeout: 10_000 });
+  if (!version.ok) {
+    console.error('[plugin login] GitHub CLI is required. Install gh from https://cli.github.com/ and retry.');
+    process.exit(1);
+  }
+  const result = await spawnPassthrough('gh', ['auth', 'login', '--hostname', host, '--web']);
+  process.exit(result.code ?? 0);
+}
+
+async function runPluginWhoami(rest) {
+  const flags = parseFlags(rest, {
+    string: new Set(['host']),
+    boolean: new Set(['help', 'h', 'json']),
+  });
+  if (flags.help || flags.h) {
+    console.log(`Usage:
+  od plugin whoami [--host github.com] [--json]
+
+Shows the GitHub account gh will use for Open Design registry publishing.`);
+    return;
+  }
+  const host = typeof flags.host === 'string' ? flags.host : 'github.com';
+  const auth = await execFileBuffered('gh', ['auth', 'status', '--hostname', host], { timeout: 10_000 });
+  if (!auth.ok) {
+    if (flags.json) {
+      process.stdout.write(JSON.stringify({
+        ok: false,
+        host,
+        message: 'GitHub CLI is not authenticated for this host.',
+        log: auth.stderr || auth.stdout,
+      }, null, 2) + '\n');
+      return;
+    }
+    console.error(`[plugin whoami] gh is not authenticated for ${host}. Run: od plugin login --host ${host}`);
+    if (auth.stderr || auth.stdout) console.error(auth.stderr || auth.stdout);
+    process.exit(1);
+  }
+  const user = await execFileBuffered('gh', ['api', 'user', '--hostname', host], { timeout: 10_000 });
+  let login = '';
+  let name = '';
+  try {
+    const parsed = JSON.parse(user.stdout || '{}');
+    login = typeof parsed.login === 'string' ? parsed.login : '';
+    name = typeof parsed.name === 'string' ? parsed.name : '';
+  } catch {
+    // Keep the auth status useful even if gh api output is unavailable.
+  }
+  const payload = {
+    ok: true,
+    host,
+    login,
+    name,
+    auth: auth.stderr || auth.stdout,
+  };
+  if (flags.json) {
+    process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+  } else {
+    console.log(`[plugin whoami] ${login || 'authenticated'}${name ? ` (${name})` : ''} @ ${host}`);
+  }
+}
+
+async function execFileBuffered(command, args, opts = {}) {
+  const { execFile } = await import('node:child_process');
+  return new Promise((resolve) => {
+    execFile(command, args, {
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+      ...opts,
+    }, (error, stdout, stderr) => {
+      resolve({
+        ok: !error,
+        code: error?.code,
+        stdout: String(stdout ?? '').trim(),
+        stderr: String(stderr ?? '').trim(),
+        error,
+      });
+    });
+  });
+}
+
+async function spawnPassthrough(command, args) {
+  const { spawn } = await import('node:child_process');
+  return await new Promise((resolve) => {
+    const child = spawn(command, args, { stdio: 'inherit' });
+    child.on('error', (error) => resolve({ code: 1, error }));
+    child.on('close', (code) => resolve({ code }));
+  });
+}
+
+function inferGithubHost(target) {
+  if (!target || target === 'github.com') return 'github.com';
+  try {
+    const parsed = new URL(target);
+    return parsed.hostname || 'github.com';
+  } catch {
+    // Marketplace ids are not URLs; v1 GitHub-backed auth defaults to github.com.
+    return 'github.com';
+  }
+}
+
 // Phase 4 / spec §14 — `od plugin export <projectId> --as <target>`.
 //
 // Produces a publish-ready folder from the AppliedPluginSnapshot
@@ -1195,6 +1317,10 @@ async function runMarketplace(args) {
   od marketplace add     <url> [--trust trusted|restricted]   Register a federated catalog.
   od marketplace list                                         List registered marketplaces.
   od marketplace info    <id>                                 Inspect one marketplace + cached manifest.
+  od marketplace plugins <id> [--json]                        List cached plugin entries for one marketplace.
+  od marketplace search  <query> [--json]                     Search cached marketplace entries.
+  od marketplace doctor  [id] [--strict] [--json]             Validate cached marketplace entries.
+  od marketplace login   <id|url> [--host github.com]         Authenticate gh for private GitHub catalogs.
   od marketplace refresh <id>                                 Re-fetch the manifest.
   od marketplace remove  <id>                                 Forget a marketplace.
   od marketplace trust   <id> [--trust trusted|restricted|official]
@@ -1276,6 +1402,81 @@ Common options:
         console.log(`${m.name}@${m.version}\t${m.source}\t${m.marketplaceId}@${m.marketplaceVersion}\t${m.description}`);
       }
       return;
+    }
+    case 'plugins': {
+      const id = rest.find((a) => !a.startsWith('-'));
+      if (!id) {
+        console.error('Usage: od marketplace plugins <id> [--json]');
+        process.exit(2);
+      }
+      const resp = await fetch(`${base}/api/marketplaces/${encodeURIComponent(id)}/plugins`);
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error(`plugins failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      const plugins = Array.isArray(data?.plugins) ? data.plugins : [];
+      if (flags.json) {
+        process.stdout.write(JSON.stringify({ marketplaceId: id, plugins }, null, 2) + '\n');
+        return;
+      }
+      if (plugins.length === 0) {
+        console.log(`No plugins in marketplace ${id}.`);
+        return;
+      }
+      for (const p of plugins) {
+        console.log(`${p.name}@${p.version}\t${p.source}\t${p.description ?? ''}`);
+      }
+      return;
+    }
+    case 'doctor': {
+      const strict = flags.strict === true;
+      const id = rest.find((a) => !a.startsWith('-'));
+      const resp = id
+        ? await fetch(`${base}/api/marketplaces/${encodeURIComponent(id)}`)
+        : await fetch(`${base}/api/marketplaces`);
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.error(`doctor failed: ${resp.status} ${JSON.stringify(data)}`);
+        process.exit(1);
+      }
+      const rows = id ? [data] : (data?.marketplaces ?? []);
+      const { doctorMarketplace } = await import('./plugins/marketplace-doctor.js');
+      const reports = [];
+      for (const row of rows) {
+        reports.push(await doctorMarketplace({
+          id: row.id,
+          trust: row.trust,
+          manifest: row.manifest,
+          strict,
+        }));
+      }
+      const ok = reports.every((report) => report.ok);
+      if (flags.json) {
+        process.stdout.write(JSON.stringify({ ok, reports }, null, 2) + '\n');
+      } else {
+        for (const report of reports) {
+          console.log(`[marketplace doctor] ${report.backendId}: ${report.ok ? 'ok' : 'issues'} (${report.entriesChecked} entries)`);
+          for (const issue of report.issues) {
+            console.log(`  [${issue.severity}] ${issue.code}${issue.pluginName ? ` ${issue.pluginName}` : ''}: ${issue.message}`);
+          }
+        }
+      }
+      process.exit(ok ? 0 : 1);
+    }
+    case 'login': {
+      const target = rest.find((a) => !a.startsWith('-'));
+      const host = typeof flags.host === 'string'
+        ? flags.host
+        : inferGithubHost(target ?? 'github.com');
+      const version = await execFileBuffered('gh', ['--version'], { timeout: 10_000 });
+      if (!version.ok) {
+        console.error('[marketplace login] GitHub CLI is required. Install gh from https://cli.github.com/ and retry.');
+        process.exit(1);
+      }
+      console.log(`[marketplace login] authenticating gh for ${host}. Tokens stay in gh, not Open Design.`);
+      const result = await spawnPassthrough('gh', ['auth', 'login', '--hostname', host, '--web']);
+      process.exit(result.code ?? 0);
     }
     case 'add': {
       const url = rest.find((a) => !a.startsWith('-'));
@@ -1736,19 +1937,91 @@ function emitPluginList({ entries, json, emptyMessage, showRank }) {
 
 async function runPluginInfo(rest) {
   const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
-  const id = rest.find((a) => !a.startsWith('--') && a !== flags['daemon-url'] && a !== flags.source);
+  const id = rest.find((a) => !a.startsWith('--')
+    && a !== flags['daemon-url']
+    && a !== flags.source
+    && a !== flags.version);
   if (!id) {
-    console.error('Usage: od plugin info <id>');
+    console.error('Usage: od plugin info <id-or-marketplace-name> [--version <version|tag|range>] [--json]');
     process.exit(2);
   }
-  const url = `${(await pluginDaemonUrl(flags)).replace(/\/$/, '')}/api/plugins/${encodeURIComponent(id)}`;
+  const base = (await pluginDaemonUrl(flags)).replace(/\/$/, '');
+  const url = `${base}/api/plugins/${encodeURIComponent(id)}`;
   const resp = await fetch(url);
+  if (resp.ok && !flags.version) {
+    const data = await resp.json();
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    return;
+  }
+  const mpResp = await fetch(`${base}/api/marketplaces`);
+  if (mpResp.ok) {
+    const mpData = await mpResp.json().catch(() => ({}));
+    const resolved = resolveMarketplacePluginFromList(
+      mpData?.marketplaces ?? [],
+      flags.version ? `${id}@${flags.version}` : id,
+    );
+    if (resolved) {
+      process.stdout.write(JSON.stringify({ marketplace: resolved }, null, 2) + '\n');
+      return;
+    }
+  }
   if (!resp.ok) {
     console.error(`GET /api/plugins/${id} failed: ${resp.status} ${await resp.text()}`);
     process.exit(1);
   }
   const data = await resp.json();
   process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+}
+
+function resolveMarketplacePluginFromList(marketplaces, specifier) {
+  const parsed = parseCliPluginSpecifier(specifier);
+  const target = parsed.name.toLowerCase();
+  for (const marketplace of marketplaces) {
+    for (const entry of marketplace?.manifest?.plugins ?? []) {
+      if (String(entry.name ?? '').toLowerCase() !== target) continue;
+      const version = resolveCliEntryVersion(entry, parsed.range);
+      if (!version) return null;
+      return {
+        marketplaceId: marketplace.id,
+        marketplaceTrust: marketplace.trust,
+        name: entry.name,
+        version: version.version,
+        source: version.source,
+        ref: version.ref,
+        integrity: version.integrity,
+        manifestDigest: version.manifestDigest,
+        entry,
+      };
+    }
+  }
+  return null;
+}
+
+function parseCliPluginSpecifier(input) {
+  const trimmed = String(input ?? '').trim();
+  const slash = trimmed.indexOf('/');
+  const at = trimmed.lastIndexOf('@');
+  if (slash > 0 && at > slash + 1) {
+    return { name: trimmed.slice(0, at), range: trimmed.slice(at + 1) };
+  }
+  return { name: trimmed, range: undefined };
+}
+
+function resolveCliEntryVersion(entry, range) {
+  if (entry?.yanked) return null;
+  const versions = Array.isArray(entry?.versions) ? entry.versions : [];
+  const target = range && range !== 'latest'
+    ? (entry?.distTags?.[range] ?? range)
+    : (entry?.distTags?.latest ?? entry?.version);
+  const version = versions.find((item) => item.version === target) ?? null;
+  if (version?.yanked) return null;
+  return {
+    version: target,
+    source: version?.source ?? entry?.source,
+    ref: version?.ref ?? entry?.ref,
+    integrity: version?.integrity ?? version?.dist?.integrity ?? entry?.integrity ?? entry?.dist?.integrity,
+    manifestDigest: version?.manifestDigest ?? version?.dist?.manifestDigest ?? entry?.manifestDigest ?? entry?.dist?.manifestDigest,
+  };
 }
 
 // Plan §3.MM1 — `od plugin manifest <id>`. Prints just the parsed
@@ -1834,7 +2107,7 @@ async function runPluginInstall(rest) {
       '       od plugin install ./local-folder\n' +
       '       od plugin install github:owner/repo[@ref][/subpath]\n' +
       '       od plugin install https://example.com/plugin.tar.gz\n' +
-      '       od plugin install <name>      # resolves through configured marketplaces');
+      '       od plugin install <name>[@version|tag|range]  # resolves through configured marketplaces');
     process.exit(2);
   }
   const url = `${(await pluginDaemonUrl(flags)).replace(/\/$/, '')}/api/plugins/install`;
@@ -1851,6 +2124,8 @@ async function runPluginInstall(rest) {
   const decoder = new TextDecoder();
   let buffer = '';
   let exitCode = 0;
+  const events = [];
+  let finalEvent = null;
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -1863,18 +2138,28 @@ async function runPluginInstall(rest) {
       const dataLine  = lines.find((l) => l.startsWith('data: '));
       const event = eventLine ? eventLine.slice('event: '.length) : 'message';
       const data = dataLine ? safeParseJson(dataLine.slice('data: '.length)) : null;
+      events.push({ event, data });
       if (event === 'progress') {
-        console.log(`[install] ${data?.phase ?? '...'}: ${data?.message ?? ''}`);
+        if (!flags.json) console.log(`[install] ${data?.phase ?? '...'}: ${data?.message ?? ''}`);
       } else if (event === 'success') {
-        console.log(`[install] ok — ${data?.plugin?.id}@${data?.plugin?.version} (trust=${data?.plugin?.trust})`);
-        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+        finalEvent = data;
+        if (!flags.json) console.log(`[install] ok — ${data?.plugin?.id}@${data?.plugin?.version} (trust=${data?.plugin?.trust})`);
+        if (!flags.json && Array.isArray(data?.warnings) && data.warnings.length > 0) {
           for (const w of data.warnings) console.log(`[install] warn: ${w}`);
         }
       } else if (event === 'error') {
-        console.error(`[install] error: ${data?.message ?? 'unknown'}`);
+        finalEvent = data;
+        if (!flags.json) console.error(`[install] error: ${data?.message ?? 'unknown'}`);
         exitCode = 1;
       }
     }
+  }
+  if (flags.json) {
+    process.stdout.write(JSON.stringify({
+      ok: exitCode === 0,
+      result: finalEvent,
+      events,
+    }, null, 2) + '\n');
   }
   process.exit(exitCode);
 }
@@ -2508,13 +2793,16 @@ async function runPluginUpgrade(rest) {
   const flags = parseFlags(rest, { string: PLUGIN_STRING_FLAGS, boolean: PLUGIN_BOOLEAN_FLAGS });
   const id = rest.find((a) => !a.startsWith('-') && a !== flags['daemon-url'] && a !== flags.source);
   if (!id) {
-    console.error('Usage: od plugin upgrade <id>');
+    console.error('Usage: od plugin upgrade <id> [--policy latest|pinned] [--json]');
     process.exit(2);
   }
   const url = `${(await pluginDaemonUrl(flags)).replace(/\/$/, '')}/api/plugins/${encodeURIComponent(id)}/upgrade`;
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+    body: JSON.stringify({
+      policy: flags.policy === 'pinned' ? 'pinned' : 'latest',
+    }),
   });
   if (!resp.ok || !resp.body) {
     let msg = '';
@@ -2526,6 +2814,8 @@ async function runPluginUpgrade(rest) {
   const decoder = new TextDecoder();
   let buffer = '';
   let exitCode = 0;
+  const events = [];
+  let finalEvent = null;
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -2538,18 +2828,29 @@ async function runPluginUpgrade(rest) {
       const dataLine  = lines.find((l) => l.startsWith('data: '));
       const event = eventLine ? eventLine.slice('event: '.length) : 'message';
       const data = dataLine ? safeParseJson(dataLine.slice('data: '.length)) : null;
+      events.push({ event, data });
       if (event === 'progress') {
-        console.log(`[upgrade] ${data?.phase ?? '...'}: ${data?.message ?? ''}`);
+        if (!flags.json) console.log(`[upgrade] ${data?.phase ?? '...'}: ${data?.message ?? ''}`);
       } else if (event === 'success') {
-        console.log(`[upgrade] ok — ${data?.plugin?.id}@${data?.plugin?.version} (trust=${data?.plugin?.trust})`);
-        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+        finalEvent = data;
+        if (!flags.json) console.log(`[upgrade] ok — ${data?.plugin?.id}@${data?.plugin?.version} (trust=${data?.plugin?.trust})`);
+        if (!flags.json && Array.isArray(data?.warnings) && data.warnings.length > 0) {
           for (const w of data.warnings) console.log(`[upgrade] warn: ${w}`);
         }
       } else if (event === 'error') {
-        console.error(`[upgrade] error: ${data?.message ?? 'unknown'}`);
+        finalEvent = data;
+        if (!flags.json) console.error(`[upgrade] error: ${data?.message ?? 'unknown'}`);
         exitCode = 1;
       }
     }
+  }
+  if (flags.json) {
+    process.stdout.write(JSON.stringify({
+      ok: exitCode === 0,
+      policy: flags.policy === 'pinned' ? 'pinned' : 'latest',
+      result: finalEvent,
+      events,
+    }, null, 2) + '\n');
   }
   process.exit(exitCode);
 }
@@ -2666,13 +2967,14 @@ function coerceCliValue(raw) {
 // always under the author's control.
 async function runPluginPublish(rest) {
   const flags = parseFlags(rest, {
-    string: new Set(['daemon-url', 'to', 'snapshot-id', 'repo']),
+    string: new Set(['daemon-url', 'to', 'snapshot-id', 'repo', 'catalog']),
     boolean: new Set(['help', 'h', 'json', 'open']),
   });
   if (rest.length === 0 || flags.help || flags.h) {
     console.log(`Usage:
-  od plugin publish <pluginId> --to anthropics-skills|awesome-agent-skills|clawhub|skills-sh
+  od plugin publish <pluginId> --to open-design|anthropics-skills|awesome-agent-skills|clawhub|skills-sh
                     [--repo <github-url>] [--snapshot-id <id>] [--open] [--json]
+  od plugin publish <pluginId> --to marketplace-json --catalog ./open-design-marketplace.json --repo <github-url>
 
 The CLI prints the catalog's submission URL + a pre-filled PR body.
 Pass --open to auto-launch the system browser. Use --snapshot-id to
@@ -2689,7 +2991,7 @@ publish from a frozen run snapshot rather than the live installed copy.`);
     process.exit(2);
   }
   if (!target) {
-    console.error('--to <catalog> is required (one of: anthropics-skills, awesome-agent-skills, clawhub, skills-sh)');
+    console.error('--to <catalog> is required (one of: open-design, anthropics-skills, awesome-agent-skills, clawhub, skills-sh)');
     process.exit(2);
   }
   const base = (await pluginDaemonUrl(flags)).replace(/\/$/, '');
@@ -2716,6 +3018,27 @@ publish from a frozen run snapshot rather than the live installed copy.`);
   if (typeof flags.repo === 'string' && flags.repo.length > 0) {
     meta.repoUrl = flags.repo;
   }
+  if (target === 'marketplace-json') {
+    if (typeof flags.catalog !== 'string' || flags.catalog.length === 0) {
+      console.error('--catalog <path> is required for --to marketplace-json');
+      process.exit(2);
+    }
+    if (!meta.repoUrl) {
+      console.error('--repo <github-url> is required for --to marketplace-json so the source can be reproduced');
+      process.exit(2);
+    }
+    const outcome = await publishToMarketplaceJson({
+      catalogPath: flags.catalog,
+      meta,
+    });
+    if (flags.json) {
+      process.stdout.write(JSON.stringify(outcome, null, 2) + '\n');
+    } else {
+      console.log(`[publish] updated ${outcome.catalogPath}`);
+      console.log(`[publish] ${outcome.entry.name}@${outcome.entry.version} -> ${outcome.entry.source}`);
+    }
+    return;
+  }
   const { buildPublishLink, PublishError } = await import('./plugins/publish.js');
   let link;
   try {
@@ -2741,6 +3064,118 @@ publish from a frozen run snapshot rather than the live installed copy.`);
       : 'xdg-open';
     const { spawn } = await import('node:child_process');
     spawn(opener, [link.url], { detached: true, stdio: 'ignore' }).unref();
+  }
+}
+
+async function publishToMarketplaceJson({ catalogPath, meta }) {
+  const [{ dirname, resolve }, { mkdir, readFile, writeFile }, { PublishError, upsertMarketplaceJsonEntry }] = await Promise.all([
+    import('node:path'),
+    import('node:fs/promises'),
+    import('./plugins/publish.js'),
+  ]);
+  const resolvedPath = resolve(process.cwd(), catalogPath);
+  let existing = null;
+  try {
+    existing = JSON.parse(await readFile(resolvedPath, 'utf8'));
+  } catch (err) {
+    if (err?.code !== 'ENOENT') {
+      throw err;
+    }
+  }
+  let outcome;
+  try {
+    outcome = upsertMarketplaceJsonEntry({ manifest: existing, meta });
+  } catch (err) {
+    if (err instanceof PublishError) {
+      console.error(`[publish] ${err.message}`);
+      process.exit(2);
+    }
+    throw err;
+  }
+  await mkdir(dirname(resolvedPath), { recursive: true });
+  await writeFile(resolvedPath, `${JSON.stringify(outcome.manifest, null, 2)}\n`, 'utf8');
+  return {
+    catalogPath: resolvedPath,
+    inserted: outcome.inserted,
+    entry: outcome.entry,
+    manifest: {
+      name: outcome.manifest.name,
+      version: outcome.manifest.version,
+      plugins: outcome.manifest.plugins.length,
+    },
+  };
+}
+
+async function runPluginYank(rest) {
+  const flags = parseFlags(rest, {
+    string: new Set(['daemon-url', 'reason', 'to']),
+    boolean: new Set(['help', 'h', 'json', 'open']),
+  });
+  if (rest.length === 0 || flags.help || flags.h) {
+    console.log(`Usage:
+  od plugin yank <vendor/plugin-name>@<version> --reason "<why>" [--to open-design] [--json]
+
+Yanking never deletes metadata or bytes. It opens the registry review flow that
+marks a version unresolvable for new installs while preserving lockfile replay.`);
+    process.exit(rest.length === 0 ? 2 : 0);
+  }
+  const spec = rest.find((a) => !a.startsWith('-') && a !== flags.reason && a !== flags.to);
+  const reason = typeof flags.reason === 'string' ? flags.reason.trim() : '';
+  const parsed = parseCliPluginSpecifier(spec);
+  if (!parsed.name || !parsed.range) {
+    console.error('Usage: od plugin yank <vendor/plugin-name>@<version> --reason "<why>"');
+    process.exit(2);
+  }
+  if (!reason) {
+    console.error('--reason is required for yanking');
+    process.exit(2);
+  }
+  const target = flags.to ?? 'open-design';
+  if (target !== 'open-design') {
+    console.error('Only --to open-design is supported in this v1 GitHub-backed yank flow.');
+    process.exit(2);
+  }
+  const title = `Yank ${parsed.name}@${parsed.range}`;
+  const body = [
+    `## Yank ${parsed.name}@${parsed.range}`,
+    '',
+    `Reason: ${reason}`,
+    '',
+    'Expected registry patch:',
+    '',
+    '```json',
+    JSON.stringify({
+      name: parsed.name,
+      version: parsed.range,
+      yanked: true,
+      yankReason: reason,
+    }, null, 2),
+    '```',
+    '',
+    'Generated by `od plugin yank`.',
+  ].join('\n');
+  const params = new URLSearchParams({ title, body });
+  const payload = {
+    catalog: 'open-design',
+    name: parsed.name,
+    version: parsed.range,
+    reason,
+    url: `https://github.com/open-design/plugin-registry/issues/new?${params.toString()}`,
+    body,
+  };
+  if (flags.json) {
+    process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+  } else {
+    console.log(`[yank] ${payload.url}`);
+    console.log('---');
+    console.log(body);
+  }
+  if (flags.open) {
+    const opener = process.platform === 'darwin' ? 'open'
+      : process.platform === 'win32' ? 'start'
+      : 'xdg-open';
+    const { spawn } = await import('node:child_process');
+    spawn(opener, [payload.url], { detached: true, stdio: 'ignore' }).unref();
   }
 }
 
@@ -3164,13 +3599,17 @@ function printPluginHelp() {
                                           (manifest parse + atom + ref checks).
   od plugin pack <folder> [--out <path>]  Build a .tgz archive of a plugin
                                           folder for distribution.
+  od plugin publish <folder> --to open-design|anthropics-skills|awesome-agent-skills|clawhub|skills-sh
+                                          Prepare a registry submission link.
+  od plugin login [--host github.com]      Authenticate registry publishing via gh.
+  od plugin whoami [--host github.com]     Show the gh account used for publishing.
 
 Common options:
   --daemon-url <url>   Open Design daemon HTTP base (default OD_DAEMON_URL, OD_SIDECAR_IPC_PATH discovery, or http://127.0.0.1:7456).
   --json               Emit raw JSON (suitable for scripts) instead of human-readable output.
 
-Phase 1 only supports local-folder installs. The github / https tarball
-sources arrive in Phase 2A. The marketplace surface comes in Phase 4.`);
+Installs support local folders, github:owner/repo refs, HTTPS .tgz archives,
+and bare marketplace names resolved through configured registry sources.`);
 }
 
 // ---------------------------------------------------------------------------

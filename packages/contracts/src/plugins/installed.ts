@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { PluginManifestSchema } from './manifest.js';
-import { TrustTierSchema, type TrustTier } from './marketplace.js';
+import {
+  MarketplaceTrustSchema,
+  TrustTierSchema,
+  type MarketplaceTrust,
+  type TrustTier,
+} from './marketplace.js';
 
 // `installed_plugins.source_kind` — accepts `'bundled'` from Phase 1 even
 // though `plugins/_official/` arrives in spec §23 / Phase 4 (plan F3). Keeps
@@ -26,6 +31,13 @@ export const InstalledPluginRecordSchema = z.object({
   pinnedRef:           z.string().optional(),
   sourceDigest:        z.string().optional(),
   sourceMarketplaceId: z.string().optional(),
+  sourceMarketplaceEntryName:    z.string().optional(),
+  sourceMarketplaceEntryVersion: z.string().optional(),
+  marketplaceTrust:              MarketplaceTrustSchema.optional(),
+  resolvedSource:                z.string().optional(),
+  resolvedRef:                   z.string().optional(),
+  manifestDigest:                z.string().optional(),
+  archiveIntegrity:              z.string().optional(),
   trust:               TrustTierSchema,
   capabilitiesGranted: z.array(z.string()),
   manifest:            PluginManifestSchema,
@@ -67,4 +79,4 @@ export type ProjectPluginFolderInstallRequest = z.infer<typeof ProjectPluginFold
 
 // Re-export TrustTier so consumers can pull every plugin contract from one
 // barrel without hopping through marketplace.ts.
-export type { TrustTier };
+export type { MarketplaceTrust, TrustTier };

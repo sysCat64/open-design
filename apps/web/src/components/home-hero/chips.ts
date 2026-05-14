@@ -80,9 +80,9 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     // a P0 checklist. The previous routing to the generic
     // od-new-generation router left the agent to invent every section's
     // CSS, producing inconsistent type scales and density between turns.
-    // Web-prototype's manifest has no `inputs` field, so the
-    // chip-supplied inputs tuned for od-new-generation's
-    // `{{artifactKind}} / {{audience}} / {{topic}}` template are dropped.
+    // Web-prototype's manifest owns the editable `{{fidelity}}`,
+    // `{{artifactKind}}`, `{{audience}}`, `{{designSystem}}`, and
+    // `{{template}}` slots; Home renders those placeholders inline.
     action: {
       kind: 'apply-scenario',
       pluginId: 'example-web-prototype',

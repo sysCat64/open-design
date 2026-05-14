@@ -28,6 +28,7 @@ export type FilterMode = 'all' | 'featured';
 
 interface UsePluginFacetsArgs {
   plugins: InstalledPluginRecord[];
+  preferDefaultFacet?: boolean;
 }
 
 export interface UsePluginFacetsResult {
@@ -52,7 +53,10 @@ const EMPTY_SELECTION: FacetSelection = {
   subcategory: null,
 };
 
-export function usePluginFacets(args: UsePluginFacetsArgs): UsePluginFacetsResult {
+export function usePluginFacets({
+  plugins,
+  preferDefaultFacet = true,
+}: UsePluginFacetsArgs): UsePluginFacetsResult {
   const [mode, setMode] = useState<FilterMode>('all');
   const [selection, setSelection] = useState<FacetSelection>(EMPTY_SELECTION);
   const [query, setQuery] = useState('');
@@ -72,9 +76,9 @@ export function usePluginFacets(args: UsePluginFacetsArgs): UsePluginFacetsResul
   const visiblePlugins = useMemo(
     () =>
       sortByVisualAppeal(
-        args.plugins.filter((p) => p.manifest?.od?.kind !== 'atom'),
+        plugins.filter((p) => p.manifest?.od?.kind !== 'atom'),
       ),
-    [args.plugins],
+    [plugins],
   );
 
   const featuredList = useMemo(
@@ -87,12 +91,16 @@ export function usePluginFacets(args: UsePluginFacetsArgs): UsePluginFacetsResul
   useEffect(() => {
     if (bootstrapped) return;
     if (visiblePlugins.length === 0) return;
+    if (!preferDefaultFacet) {
+      setBootstrapped(true);
+      return;
+    }
     const next = resolveDefaultSelection(catalog);
     if (next.category !== null) {
       setSelection(next);
     }
     setBootstrapped(true);
-  }, [bootstrapped, visiblePlugins.length, catalog]);
+  }, [bootstrapped, preferDefaultFacet, visiblePlugins.length, catalog]);
 
   // The visual-appeal sort is applied at `visiblePlugins` derivation
   // (above), so any downstream `applyFacetSelection` slice preserves

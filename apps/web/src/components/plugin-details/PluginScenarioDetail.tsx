@@ -113,7 +113,7 @@ export function PluginScenarioDetail({
               aria-label="Close details"
               title="Close (Esc)"
             >
-              <Icon name="close" size={14} />
+              <Icon name="close" size={18} />
             </button>
           </div>
         </header>

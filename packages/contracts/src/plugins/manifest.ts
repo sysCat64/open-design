@@ -31,7 +31,7 @@ export type McpServerSpec = z.infer<typeof McpServerSpecSchema>;
 export const InputFieldSchema = z.object({
   name:        z.string().min(1),
   label:       z.string().optional(),
-  type:        z.enum(['string', 'text', 'select', 'number', 'boolean']).optional(),
+  type:        z.enum(['string', 'text', 'select', 'number', 'boolean', 'file']).optional(),
   required:    z.boolean().optional(),
   options:     z.array(z.string()).optional(),
   placeholder: z.string().optional(),

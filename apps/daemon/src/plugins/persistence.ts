@@ -25,6 +25,13 @@ export function migratePlugins(db: SqliteDb): void {
       pinned_ref           TEXT,
       source_digest        TEXT,
       source_marketplace_id TEXT,
+      source_marketplace_entry_name TEXT,
+      source_marketplace_entry_version TEXT,
+      marketplace_trust    TEXT,
+      resolved_source      TEXT,
+      resolved_ref         TEXT,
+      manifest_digest      TEXT,
+      archive_integrity    TEXT,
       trust                TEXT NOT NULL,
       capabilities_granted TEXT NOT NULL,
       manifest_json        TEXT NOT NULL,
@@ -57,6 +64,12 @@ export function migratePlugins(db: SqliteDb): void {
       plugin_version           TEXT NOT NULL,
       manifest_source_digest   TEXT NOT NULL,
       source_marketplace_id    TEXT,
+      source_marketplace_entry_name TEXT,
+      source_marketplace_entry_version TEXT,
+      marketplace_trust        TEXT,
+      resolved_source          TEXT,
+      resolved_ref             TEXT,
+      archive_integrity        TEXT,
       pinned_ref               TEXT,
       task_kind                TEXT NOT NULL,
       inputs_json              TEXT NOT NULL,
@@ -140,9 +153,32 @@ export function migratePlugins(db: SqliteDb): void {
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_marketplaces_version ON plugin_marketplaces(version)`);
 
+  const installedCols = db.prepare(`PRAGMA table_info(installed_plugins)`).all() as DbRow[];
+  for (const [name, ddl] of [
+    ['source_marketplace_entry_name', `ALTER TABLE installed_plugins ADD COLUMN source_marketplace_entry_name TEXT`],
+    ['source_marketplace_entry_version', `ALTER TABLE installed_plugins ADD COLUMN source_marketplace_entry_version TEXT`],
+    ['marketplace_trust', `ALTER TABLE installed_plugins ADD COLUMN marketplace_trust TEXT`],
+    ['resolved_source', `ALTER TABLE installed_plugins ADD COLUMN resolved_source TEXT`],
+    ['resolved_ref', `ALTER TABLE installed_plugins ADD COLUMN resolved_ref TEXT`],
+    ['manifest_digest', `ALTER TABLE installed_plugins ADD COLUMN manifest_digest TEXT`],
+    ['archive_integrity', `ALTER TABLE installed_plugins ADD COLUMN archive_integrity TEXT`],
+  ] as const) {
+    if (!installedCols.some((c) => c['name'] === name)) db.exec(ddl);
+  }
+
   const snapshotCols = db.prepare(`PRAGMA table_info(applied_plugin_snapshots)`).all() as DbRow[];
   if (!snapshotCols.some((c) => c['name'] === 'plugin_spec_version')) {
     db.exec(`ALTER TABLE applied_plugin_snapshots ADD COLUMN plugin_spec_version TEXT NOT NULL DEFAULT '1.0.0'`);
+  }
+  for (const [name, ddl] of [
+    ['source_marketplace_entry_name', `ALTER TABLE applied_plugin_snapshots ADD COLUMN source_marketplace_entry_name TEXT`],
+    ['source_marketplace_entry_version', `ALTER TABLE applied_plugin_snapshots ADD COLUMN source_marketplace_entry_version TEXT`],
+    ['marketplace_trust', `ALTER TABLE applied_plugin_snapshots ADD COLUMN marketplace_trust TEXT`],
+    ['resolved_source', `ALTER TABLE applied_plugin_snapshots ADD COLUMN resolved_source TEXT`],
+    ['resolved_ref', `ALTER TABLE applied_plugin_snapshots ADD COLUMN resolved_ref TEXT`],
+    ['archive_integrity', `ALTER TABLE applied_plugin_snapshots ADD COLUMN archive_integrity TEXT`],
+  ] as const) {
+    if (!snapshotCols.some((c) => c['name'] === name)) db.exec(ddl);
   }
 
   // Back-reference columns. SQLite has no IF NOT EXISTS for ALTER; check

@@ -134,7 +134,8 @@ function mapInputs(value: FrontmatterValue | undefined, warnings: string[]): Inp
     let mappedType: InputField['type'];
     if (t === 'integer') mappedType = 'number';
     else if (t === 'enum') mappedType = 'select';
-    else if (t === 'string' || t === 'text' || t === 'select' || t === 'number' || t === 'boolean') mappedType = t;
+    else if (t === 'upload') mappedType = 'file';
+    else if (t === 'string' || t === 'text' || t === 'select' || t === 'number' || t === 'boolean' || t === 'file') mappedType = t;
     else {
       warnings.push(`SKILL.md inputs[${name}].type='${t}' is not in the v1 input vocabulary; falling back to 'string'`);
       mappedType = 'string';

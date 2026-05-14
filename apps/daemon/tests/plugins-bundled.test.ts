@@ -64,6 +64,34 @@ describe('registerBundledPlugins', () => {
     }
   });
 
+  it('can stamp official registry provenance on bundled preinstalls', async () => {
+    const folder = path.join(tmpRoot, 'scenarios', 'starter');
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, 'open-design.json'), SAMPLE_MANIFEST('starter'));
+    await writeFile(path.join(folder, 'SKILL.md'), SAMPLE_SKILL('starter'));
+
+    const result = await registerBundledPlugins({
+      db,
+      bundledRoot: tmpRoot,
+      marketplaceProvenance: {
+        sourceMarketplaceId: 'official',
+        marketplaceTrust: 'official',
+        entryNamePrefix: 'open-design',
+      },
+    });
+
+    expect(result.registered[0]?.sourceKind).toBe('bundled');
+    expect(result.registered[0]?.sourceMarketplaceId).toBe('official');
+    expect(result.registered[0]?.sourceMarketplaceEntryName).toBe('open-design/starter');
+    expect(result.registered[0]?.sourceMarketplaceEntryVersion).toBe('0.1.0');
+    expect(result.registered[0]?.marketplaceTrust).toBe('official');
+    expect(result.registered[0]?.resolvedSource).toBe(folder);
+
+    const [row] = listInstalledPlugins(db);
+    expect(row?.sourceMarketplaceId).toBe('official');
+    expect(row?.sourceMarketplaceEntryName).toBe('open-design/starter');
+  });
+
   it('also registers a direct <bundledRoot>/<plugin-id>/ folder', async () => {
     // Direct layout (no tier): <bundledRoot>/sample-plugin/...
     const folder = path.join(tmpRoot, 'sample-plugin');
