@@ -5007,6 +5007,24 @@ a.avatar-item:visited {
   color: var(--text-muted);
 }
 .agent-model-row .hint { margin: 0; font-size: 11.5px; }
+.agent-model-select-wrap {
+  position: relative;
+}
+.agent-model-select-wrap select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
+  padding-right: 28px;
+  width: 100%;
+}
+.agent-model-select-chevron {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-soft);
+  pointer-events: none;
+}
 .agent-cli-env {
   padding: 10px 12px;
   border: 1px solid var(--border-soft);
