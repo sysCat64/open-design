@@ -605,6 +605,28 @@ jobs:
           mkdir -p "$report_dir"
           pnpm test specs/linux.spec.ts 2>&1 | tee "$report_dir/vitest.log"
 
+      - name: Collect linux headless runtime logs
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          report_dir="$RUNNER_TEMP/packaged-report/linux-headless"
+          runtime_root="$RUNNER_TEMP/tools-pack/runtime/linux/namespaces/ci-pr-linux"
+          if [ -d "$runtime_root" ]; then
+            echo "--- $runtime_root tree ---"
+            find "$runtime_root" -maxdepth 4 -type f | head -40 || true
+            mkdir -p "$report_dir/runtime"
+            # Logs: per-app stdout/stderr captured by tools-pack
+            if [ -d "$runtime_root/logs" ]; then
+              cp -R "$runtime_root/logs" "$report_dir/runtime/logs" || true
+            fi
+            # Runtime state files (identity markers, sidecar JSON)
+            if [ -d "$runtime_root/runtime" ]; then
+              cp -R "$runtime_root/runtime" "$report_dir/runtime/state" || true
+            fi
+          else
+            echo "no runtime root found at $runtime_root"
+          fi
+
       - name: Upload linux headless e2e spec report
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
