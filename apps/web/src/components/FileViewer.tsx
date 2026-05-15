@@ -1873,8 +1873,8 @@ function BoardComposerPopover({
         <div title={target.elementId}>
           {isFreePin ? (
             <>
-              <strong id={titleId}>Pin</strong>
-              <span>at {target.position.x + 12}, {target.position.y + 12}</span>
+              <strong id={titleId}>{t('chat.comments.pin')}</strong>
+              <span>{t('chat.comments.pinAtCoords', { x: target.position.x + 12, y: target.position.y + 12 })}</span>
             </>
           ) : (
             <>
@@ -1895,7 +1895,7 @@ function BoardComposerPopover({
       </div>
       {podMembers.length > 0 ? (
         <div className="board-pod-summary">
-          <strong>{target.memberCount || podMembers.length} captured items</strong>
+          <strong>{t('chat.comments.capturedItems', { n: target.memberCount || podMembers.length })}</strong>
           <div className="board-pod-members">
             {podMembers.slice(0, 6).map((member) => (
               <span key={member.elementId} className="board-pod-chip">
@@ -1911,7 +1911,7 @@ function BoardComposerPopover({
             <div key={`${target.elementId}-${index}`} className="board-note-item">
               <span>{note}</span>
               <button type="button" className="ghost" onClick={() => onRemoveQueuedNote(index)}>
-                Remove
+                {t('chat.comments.remove')}
               </button>
             </div>
           ))}
@@ -1945,7 +1945,7 @@ function BoardComposerPopover({
               disabled={!draft.trim()}
               onClick={onAddDraft}
             >
-              Add note
+              {t('chat.comments.addNote')}
             </button>
           ) : (
             <button
@@ -1955,7 +1955,7 @@ function BoardComposerPopover({
               disabled={!draft.trim()}
               onClick={() => void onSaveComment()}
             >
-              Comment
+              {t('chat.comments.comment')}
             </button>
           )}
           <button
@@ -1965,7 +1965,7 @@ function BoardComposerPopover({
             disabled={pendingCount === 0 || sending}
             onClick={() => void onSendBatch()}
           >
-            {sending ? 'Sending…' : 'Send to chat'}
+            {sending ? t('chat.comments.sending') : t('chat.comments.sendToChat')}
           </button>
         </div>
       </div>
@@ -1973,22 +1973,22 @@ function BoardComposerPopover({
   );
 }
 
-function formatCommentTime(ts: number): string {
+function formatCommentTime(ts: number, t: TranslateFn): string {
   const diff = Date.now() - ts;
-  if (diff < 60_000) return 'just now';
+  if (diff < 60_000) return t('common.justNow');
   const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return t('common.minutesAgo', { n: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t('common.hoursAgo', { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return t('common.daysAgo', { n: days });
   const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
+  if (weeks < 5) return t('common.weeksAgo', { n: weeks });
   return new Date(ts).toLocaleDateString();
 }
 
-function commentDisplayLabel(comment: PreviewComment): string {
-  if (comment.elementId.startsWith('pin-')) return 'Pin';
+function commentDisplayLabel(comment: PreviewComment, t: TranslateFn): string {
+  if (comment.elementId.startsWith('pin-')) return t('chat.comments.pin');
   return comment.label || comment.elementId;
 }
 
@@ -2076,13 +2076,13 @@ export function CommentSidePanel({
                   <span className="comment-side-avatar" aria-hidden>
                     {commentAvatarInitial(comment)}
                   </span>
-                  <strong>{commentDisplayLabel(comment)}</strong>
+                  <strong>{commentDisplayLabel(comment, t)}</strong>
                 </span>
-                <span className="comment-side-time">{formatCommentTime(comment.createdAt)}</span>
+                <span className="comment-side-time">{formatCommentTime(comment.createdAt, t)}</span>
                 <button
                   type="button"
                   className={`comment-side-check${selected ? ' checked' : ''}`}
-                  aria-label={selected ? 'Deselect' : 'Select'}
+                  aria-label={selected ? t('chat.comments.deselect') : t('chat.comments.select')}
                   aria-pressed={selected}
                   onClick={() => onToggleSelect(comment.id)}
                 >
@@ -2096,7 +2096,7 @@ export function CommentSidePanel({
                 data-testid="comment-side-edit"
                 onClick={() => onReply(comment)}
               >
-                Edit
+                {t('chat.comments.edit')}
               </button>
             </div>
           );
@@ -2104,9 +2104,9 @@ export function CommentSidePanel({
       </div>
       {selectedCount > 0 ? (
         <div className="comment-side-selectbar" data-testid="comment-side-selectbar">
-          <span className="comment-side-selectcount">{selectedCount} selected</span>
+          <span className="comment-side-selectcount">{t('chat.comments.nSelected', { n: selectedCount })}</span>
           <button type="button" className="ghost" onClick={onClearSelection}>
-            Clear
+            {t('chat.comments.clear')}
           </button>
           <button
             type="button"
@@ -2115,7 +2115,7 @@ export function CommentSidePanel({
             disabled={sending}
             onClick={() => void onSendSelected()}
           >
-            {sending ? 'Sending…' : 'Send to chat'}
+            {sending ? t('chat.comments.sending') : t('chat.comments.sendToChat')}
           </button>
         </div>
       ) : null}
@@ -5084,7 +5084,7 @@ function HtmlViewer({
     );
     if (saved) {
       clearBoardComposer();
-      setCommentSavedToast(isFreePin ? 'Pin saved' : 'Comment saved');
+      setCommentSavedToast(isFreePin ? t('chat.comments.pinSavedToast') : t('chat.comments.savedToast'));
     }
   }
 
