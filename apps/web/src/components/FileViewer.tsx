@@ -3685,6 +3685,7 @@ function HtmlViewer({
   );
   const [activeCommentTarget, setActiveCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
   const [hoveredCommentTarget, setHoveredCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
+  const [activePreviewCommentId, setActivePreviewCommentId] = useState<string | null>(null);
   const [liveCommentTargets, setLiveCommentTargets] = useState<Map<string, PreviewCommentSnapshot>>(() => new Map());
   const liveCommentTargetsRef = useRef(liveCommentTargets);
   const [commentDraft, setCommentDraft] = useState('');
@@ -4178,6 +4179,7 @@ function HtmlViewer({
     if (!selectionMode) {
       setActiveCommentTarget((current) => (current ? null : current));
       setHoveredCommentTarget((current) => (current ? null : current));
+      setActivePreviewCommentId((current) => (current ? null : current));
       setLiveCommentTargets((current) => (current.size > 0 ? new Map() : current));
       setQueuedBoardNotes((current) => (current.length > 0 ? [] : current));
       setStrokePoints((current) => (current.length > 0 ? [] : current));
@@ -4245,11 +4247,16 @@ function HtmlViewer({
       if (data.type === 'od:comment-target') {
         const snapshot = snapshotFromData(data);
         if (!snapshot.elementId) return;
-        const existing = previewComments.find((comment) => comment.elementId === snapshot.elementId);
+        const existing = previewComments.find((comment) =>
+          comment.filePath === file.name &&
+          comment.status === 'open' &&
+          comment.elementId === snapshot.elementId,
+        );
         setActiveCommentTarget(snapshot);
         setHoveredCommentTarget(snapshot);
         setLiveCommentTargets((current) => new Map(current).set(snapshot.elementId, snapshot));
         if (boardMode) {
+          setActivePreviewCommentId(existing?.id ?? null);
           setCommentDraft(existing?.note ?? '');
           setQueuedBoardNotes([]);
         }
@@ -4285,6 +4292,7 @@ function HtmlViewer({
         }
         setActiveCommentTarget(nextTarget);
         setHoveredCommentTarget(nextTarget);
+        setActivePreviewCommentId(null);
         setQueuedBoardNotes([]);
         setCommentDraft('');
         setStrokePoints([]);
@@ -5034,6 +5042,7 @@ function HtmlViewer({
   function clearBoardComposer() {
     setActiveCommentTarget(null);
     setHoveredCommentTarget(null);
+    setActivePreviewCommentId(null);
     setCommentDraft('');
     setQueuedBoardNotes([]);
     setStrokePoints([]);
@@ -5083,9 +5092,15 @@ function HtmlViewer({
   const canShare = source !== null;
   const exportTitle = file.name.replace(/\.html?$/i, '') || file.name;
   const canPptx = canShare && Boolean(onExportAsPptx) && !streaming;
-  const visibleSideComments = previewComments.filter(
-    (comment) => comment.filePath === file.name && comment.status === 'open',
+  const visibleSideComments = useMemo(
+    () => previewComments.filter((comment) => comment.filePath === file.name && comment.status === 'open'),
+    [file.name, previewComments],
   );
+  useEffect(() => {
+    if (!boardMode || !activePreviewCommentId) return;
+    const stillOpen = visibleSideComments.some((comment) => comment.id === activePreviewCommentId);
+    if (!stillOpen) clearBoardComposer();
+  }, [activePreviewCommentId, boardMode, visibleSideComments]);
   const activeDeployment = deployResult || deployment;
   const activeDeployedUrl = activeDeployment?.url?.trim() || '';
   const activeDeploymentDelayed = activeDeployment?.status === 'link-delayed';
@@ -5798,7 +5813,7 @@ function HtmlViewer({
             </div>
             {(boardMode || drawClickSelectionMode) ? (
               <CommentPreviewOverlays
-                comments={boardMode ? previewComments : []}
+                comments={boardMode ? visibleSideComments : []}
                 liveTargets={liveCommentTargets}
                 hoveredTarget={hoveredCommentTarget}
                 activeTarget={activeCommentTarget}
@@ -5808,6 +5823,7 @@ function HtmlViewer({
                 onOpenComment={(comment, snapshot) => {
                   setActiveCommentTarget(snapshot);
                   setHoveredCommentTarget(snapshot);
+                  setActivePreviewCommentId(comment.id);
                   setCommentDraft(comment.note);
                   setQueuedBoardNotes([]);
                 }}
@@ -5834,7 +5850,7 @@ function HtmlViewer({
             {boardMode && activeCommentTarget ? (
               <BoardComposerPopover
                 target={activeCommentTarget}
-                existing={previewComments.find((comment) => comment.elementId === activeCommentTarget.elementId) ?? null}
+                existing={visibleSideComments.find((comment) => comment.elementId === activeCommentTarget.elementId) ?? null}
                 draft={commentDraft}
                 notes={queuedBoardNotes}
                 onDraft={setCommentDraft}
@@ -5889,6 +5905,7 @@ function HtmlViewer({
                   };
                   setActiveCommentTarget(snapshot);
                   setHoveredCommentTarget(snapshot);
+                  setActivePreviewCommentId(comment.id);
                   setCommentDraft(comment.note);
                   setQueuedBoardNotes([]);
                 }}
