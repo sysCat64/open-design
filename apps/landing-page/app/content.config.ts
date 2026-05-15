@@ -1,17 +1,7 @@
 /*
  * Content collections — single source of truth for the multi-page
- * landing pages (`/skills/`, `/systems/`, `/craft/`, `/templates/`).
- *
- * We do NOT mirror content into `apps/landing-page/`; instead we glob
- * the canonical Markdown bundles in the repo root (`skills/`,
- * `design-systems/`, `craft/`, `templates/`). When a contributor adds
- * a `SKILL.md` or `DESIGN.md`, it shows up on the next build with
- * zero sync step.
- *
- * Schema validation is intentionally loose because the upstream
- * repos (especially `guizang-ppt` bundled verbatim) use slightly
- * different `od:` keys. Anything we don't model is preserved on the
- * raw frontmatter and ignored by our pages.
+ * landing pages (`/skills/`, `/systems/`, `/craft/`, `/templates/`) plus
+ * the blog routes under `/blog/`.
  */
 
 import { defineCollection, z } from 'astro:content';
@@ -77,4 +67,24 @@ const templates = defineCollection({
   schema: z.object({}).passthrough(),
 });
 
-export const collections = { skills, systems, craft, templates };
+// Blog posts live in `app/content/blog/*.md`. Each post must declare a typed
+// frontmatter block matching the schema below. The list page reads the
+// collection via `getCollection('blog')` and the dynamic route renders each
+// entry via `getEntry('blog', slug)`. Underscore-prefixed files (e.g.
+// `_topics.md` — the topic backlog used by the blog-factory skill) are
+// excluded from the loader so they never get parsed as posts.
+const blog = defineCollection({
+  loader: glob({
+    pattern: ['*.md', '!_*.md'],
+    base: './app/content/blog',
+  }),
+  schema: z.object({
+    title: z.string(),
+    date: z.coerce.date(),
+    category: z.enum(['Product', 'Guides', 'Use cases', 'Community']),
+    readingTime: z.number().int().positive(),
+    summary: z.string(),
+  }),
+});
+
+export const collections = { skills, systems, craft, templates, blog };

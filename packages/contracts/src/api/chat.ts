@@ -3,10 +3,12 @@ import type {
   PreviewCommentMember,
   PreviewCommentPosition,
   PreviewCommentSelectionKind,
+  PreviewVisualMarkKind,
 } from './comments';
 import type { ResearchOptions } from './research';
 
 export type ChatRole = 'user' | 'assistant';
+export type ChatCommentSelectionKind = PreviewCommentSelectionKind | 'visual';
 
 export interface ChatRequest {
   agentId: string;
@@ -66,6 +68,8 @@ export interface ChatMessageFeedback {
 
 export interface ChatRunCreateResponse {
   runId: string;
+  appliedPluginSnapshotId?: string;
+  pluginId?: string;
 }
 
 export interface ChatRunStatusResponse {
@@ -74,6 +78,8 @@ export interface ChatRunStatusResponse {
   conversationId: string | null;
   assistantMessageId: string | null;
   agentId: string | null;
+  appliedPluginSnapshotId?: string | null;
+  pluginId?: string | null;
   status: ChatRunStatus;
   createdAt: number;
   updatedAt: number;
@@ -107,9 +113,12 @@ export interface ChatCommentAttachment {
   currentText: string;
   pagePosition: PreviewCommentPosition;
   htmlHint: string;
-  selectionKind?: PreviewCommentSelectionKind;
+  selectionKind?: ChatCommentSelectionKind;
   memberCount?: number;
   podMembers?: PreviewCommentMember[];
+  screenshotPath?: string;
+  markKind?: PreviewVisualMarkKind;
+  intent?: string;
   source?: 'saved-comment' | 'board-batch';
 }
 

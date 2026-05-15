@@ -150,6 +150,56 @@ describe('NewProjectPanel design system defaults', () => {
     );
   });
 
+  it('does not persist OS widgets metadata for web-only platform targets', () => {
+    const onCreate = vi.fn();
+    render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={[]}
+        promptTemplates={[]}
+        onCreate={onCreate}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId('new-project-name'), {
+      target: { value: 'Responsive web payload' },
+    });
+    // CompactToggle renders as a `<button aria-pressed>` so screen readers
+    // announce it as a toggle button; the role is `button`, not `checkbox`.
+    fireEvent.click(screen.getByRole('button', { name: /OS widgets/i }));
+    fireEvent.click(screen.getByTestId('create-project'));
+
+    const payload = onCreate.mock.calls[0]?.[0];
+    expect(payload.metadata).toEqual(
+      expect.objectContaining({
+        platform: 'responsive',
+        platformTargets: ['responsive'],
+      }),
+    );
+    expect(payload.metadata).not.toHaveProperty('includeOsWidgets');
+  });
+
+  it('marks the target platform dropdown as a multi-select listbox', () => {
+    render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={[]}
+        promptTemplates={[]}
+        onCreate={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Responsive web/i }));
+
+    expect(screen.getByRole('listbox', { name: 'Target platforms' }).getAttribute('aria-multiselectable')).toBe(
+      'true',
+    );
+  });
+
   it('clears design system metadata when freeform is selected in multi mode', () => {
     const onCreate = vi.fn();
     render(
@@ -461,6 +511,53 @@ describe('NewProjectPanel design system defaults', () => {
     );
   });
 
+  it('exposes sound effects audio projects and switches to the ElevenLabs SFX model', () => {
+    const onCreate = vi.fn();
+    render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={[]}
+        onDeleteTemplate={vi.fn()}
+        promptTemplates={[]}
+        onCreate={onCreate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Audio' }));
+    expect(screen.getByRole('button', { name: 'SFX' })).toBeTruthy();
+    fireEvent.change(screen.getByTestId('new-project-name'), {
+      target: { value: 'Impact sound payload' },
+    });
+    fireEvent.change(screen.getByLabelText('Duration'), {
+      target: { value: '120' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'SFX' }));
+    expect(screen.getByTestId('model-picker-trigger').textContent).toContain('elevenlabs-sfx');
+    expect(screen.queryByPlaceholderText('Provider voice id, optional')).toBeNull();
+    const durationSelect = screen.getByLabelText('Duration') as HTMLSelectElement;
+    expect(Array.from(durationSelect.options).map((option) => option.value)).toEqual(['5', '10', '15', '30']);
+    expect(durationSelect.value).toBe('30');
+
+    fireEvent.click(screen.getByTestId('create-project'));
+
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Impact sound payload',
+        designSystemId: null,
+        metadata: expect.objectContaining({
+          kind: 'audio',
+          audioKind: 'sfx',
+          audioModel: 'elevenlabs-sfx',
+          audioDuration: 30,
+        }),
+      }),
+    );
+    expect(onCreate.mock.calls[0]?.[0].metadata).not.toHaveProperty('voice');
+  });
+
   it('pins skillId to hyperframes when the video model is hyperframes-html, regardless of skill discovery order', () => {
     // Reproduces PR #866 mrcfps's reported regression: when daemon `readdir()`
     // returns video skills in an order that puts `video-shortform` ahead of
@@ -534,6 +631,33 @@ describe('NewProjectPanel design system defaults', () => {
         }),
       }),
     );
+  });
+});
+
+describe('NewProjectPanel folder import feedback', () => {
+  it('shows an error when manual folder import resolves as failed', async () => {
+    const onImportFolder = vi.fn().mockResolvedValue(false);
+
+    render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={templates}
+        onDeleteTemplate={vi.fn()}
+        promptTemplates={[]}
+        onCreate={vi.fn()}
+        onImportFolder={onImportFolder}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('/path/to/project'), {
+      target: { value: '/missing/project' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
+
+    expect(onImportFolder).toHaveBeenCalledWith('/missing/project');
+    expect(await screen.findByText('Open folder failed: /missing/project')).toBeTruthy();
   });
 });
 

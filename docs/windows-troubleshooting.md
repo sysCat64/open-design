@@ -203,6 +203,18 @@ python --version   # or py --version
 Get-ExecutionPolicy -List
 ```
 
+## 7. Optional: quick launcher
+
+If you want a double-click entry point on Windows, create a `launch.bat` file in the repo root with:
+
+```bat
+@echo off
+cd /d %~dp0
+corepack pnpm tools-dev run web
+```
+
+That keeps the launcher on the supported `pnpm tools-dev run web` path while still giving you a one-click start.
+
 ---
 
 ## Optional: OpenCode agent CLI on Windows
@@ -215,4 +227,4 @@ where.exe opencode   # should show C:\Users\YOUR_USERNAME\AppData\Roaming\npm\op
 opencode --version
 ```
 
-If Open Design still shows OpenCode as *not installed* in **Settings → Execution & model**, click **Rescan** after confirming the `opencode.cmd` directory is on your user `PATH`.
+If Open Design still shows OpenCode as *not installed* in **Settings → Execution mode**, click **Rescan** after confirming the `opencode.cmd` directory is on your user `PATH`.
